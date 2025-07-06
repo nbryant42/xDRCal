@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "xDRCal (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "xDRCal (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
