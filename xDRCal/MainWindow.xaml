@@ -6,14 +6,56 @@
     xmlns:local="using:xDRCal"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:xDRCal.Controls"
     mc:Ignorable="d"
-    Title="xDRCal">
+    Title="xDRCal" SizeChanged="Window_SizeChanged">
 
     <Window.SystemBackdrop>
-        <MicaBackdrop />
+        <MicaBackdrop/>
     </Window.SystemBackdrop>
 
-    <Grid>
+    <Grid x:Name="RootGrid" Margin="0" MinWidth="400" MinHeight="400" RequestedTheme="Dark">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="F11" Invoked="FullscreenAccelerator_Invoked"/>
+            <KeyboardAccelerator Key="F12" Invoked="HdrAccelerator_Invoked"/>
+        </Grid.KeyboardAccelerators>
 
+        <!-- Layer 0: Full-screen Calibration View -->
+        <Viewbox x:Name="CalibrationViewbox" Stretch="Fill">
+            <controls:CalibrationDisplay x:Name="CalibrationView" MinWidth="1" MinHeight="1"/>
+        </Viewbox>
+
+        <!-- Layer 1: Floating Controls -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ToggleSwitch x:Name="FullscreenToggle"
+                  Header="Fullscreen (F11)"
+                  Toggled="FullscreenToggle_Toggled"
+                  VerticalAlignment="Center"
+                  ToolTipService.ToolTip="Toggle fullscreen mode"
+                  ToolTipService.Placement="Left"
+                  Margin="0,0,0,0"/>
+
+                <ToggleSwitch x:Name="HdrToggle"
+                  Header="HDR (F12)"
+                  Toggled="HdrToggle_Toggled"
+                  ToolTipService.ToolTip="Toggle HDR mode"
+                  ToolTipService.Placement="Left"
+                  VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                <controls:SliderWithValueBox x:Name="SliderA"
+                                         Value="0"
+                                         ValueChanged="ValueSlider_ValueChanged" />
+                <controls:SliderWithValueBox x:Name="SliderB"
+                                         Value="255"
+                                         ValueChanged="ValueSlider_ValueChanged" />
+                <controls:SliderWithValueBox x:Name="SizeSlider"
+                                         Value="255"
+                                         ValueChanged="SizeSlider_ValueChanged"
+                                         DisplayMode="Percent" />
+            </StackPanel>
+        </StackPanel>
     </Grid>
 </Window>
