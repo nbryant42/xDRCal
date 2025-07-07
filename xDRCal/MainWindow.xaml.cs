@@ -26,6 +26,8 @@ namespace xDRCal
             var hwnd = WindowNative.GetWindowHandle(this);
             var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
             appWindow = AppWindow.GetFromWindowId(windowId);
+
+            RootGrid.SizeChanged += (_, _) => UpdateCalibrationScale();
         }
 
         private void FullscreenAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
