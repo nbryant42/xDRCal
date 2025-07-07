@@ -2,6 +2,8 @@
 
 This is a small .NET application to help check the black or white luminosity clipping points of an SDR or HDR monitor.
 
+[Screenshot](screenshot.jpg)
+
 I mainly built this as a demo project to test out Direct2D HDR composition in a WinUI 3 project.
 
 ## Installation
