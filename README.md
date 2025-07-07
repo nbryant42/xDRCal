@@ -8,7 +8,9 @@ I mainly built this as a demo project to test out Direct2D HDR composition in a 
 
 ## Installation
 
-DIY, for now. You'll need Visual Studio until I get a build set up here.
+I've created a self-contained EXE file, built for Windows 11 24H4 x64 at a minimum.
+
+Download the ZIP from the [release](https://github.com/nbryant42/xDRCal/releases), extract to any directory, and that's it.
 
 ## Building
 
