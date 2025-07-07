@@ -85,7 +85,7 @@ namespace xDRCal
             var actualWidth = RootGrid.ActualWidth;
             var actualHeight = RootGrid.ActualHeight;
             var shortEdge = Math.Min(actualWidth, actualHeight);
-            var frac = SizeSlider.Value / 255.0;
+            var frac = SizeSlider.Value / 100.0;
             var totalArea = actualWidth * actualHeight;
             var cutoff = (shortEdge * shortEdge) / totalArea;
 

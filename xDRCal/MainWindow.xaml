@@ -44,15 +44,16 @@
 
             <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                 <controls:SliderWithValueBox x:Name="SliderA"
-                                         Value="0"
-                                         ValueChanged="ValueSlider_ValueChanged" />
+                                             Value="0"
+                                             ValueChanged="ValueSlider_ValueChanged" />
                 <controls:SliderWithValueBox x:Name="SliderB"
-                                         Value="255"
-                                         ValueChanged="ValueSlider_ValueChanged" />
+                                             Value="255"
+                                             ValueChanged="ValueSlider_ValueChanged" />
                 <controls:SliderWithValueBox x:Name="SizeSlider"
-                                         Value="255"
-                                         ValueChanged="SizeSlider_ValueChanged"
-                                         DisplayMode="Percent" />
+                                             Maximum="100"
+                                             Value="100"
+                                             ValueChanged="SizeSlider_ValueChanged"
+                                             DisplayMode="Percent" />
             </StackPanel>
         </StackPanel>
     </Grid>
