@@ -24,9 +24,27 @@ namespace xDRCal.Controls
 
         private ID2D1Bitmap1? _d2dTargetBitmap;
         private bool hdrMode;
+        private short luminosityA, luminosityB;
 
-        public short LuminosityA { get; set; }
-        public short LuminosityB { get; set; }
+        public short LuminosityA
+        {
+            get => luminosityA;
+            set
+            {
+                luminosityA = value;
+                Render();
+            }
+        }
+        public short LuminosityB
+        {
+            get => luminosityB;
+            set
+            {
+                luminosityB = value;
+                Render();
+            }
+        }
+
         public bool HdrMode
         {
             get => hdrMode;
@@ -68,11 +86,16 @@ namespace xDRCal.Controls
             }
         }
 
+        // We need to keep calling Present() on the swap chain fairly frequently, otherwise
+        // there are issues with composition clamping the brightness to SDR white. I haven't
+        // seen any hints of this in Windows Photo Viewer etc (e.g, the NVidia Overlay popup
+        // doesn't appear in other apps, providing a hint that they're not using constantly-
+        // refreshed swap chains), so it seems likely to be a WinUI 3-specific bug.
         private void StartRenderLoop()
         {
             _renderTimer = DispatcherQueue.CreateTimer();
-            _renderTimer.Interval = TimeSpan.FromMilliseconds(16); // ~60 FPS
-            _renderTimer.Tick += OnRender;
+            _renderTimer.Interval = TimeSpan.FromMilliseconds(1000.0/30.0);
+            _renderTimer.Tick += (_, _) => DoRender();
             _renderTimer.Start();
         }
 
@@ -102,43 +125,46 @@ namespace xDRCal.Controls
 
         private void InitializeDirectX()
         {
-            Vortice.Direct3D.FeatureLevel[] featureLevels = new[]
+            DispatcherQueue.TryEnqueue(() =>
             {
-                Vortice.Direct3D.FeatureLevel.Level_11_1,
-                Vortice.Direct3D.FeatureLevel.Level_11_0,
-                Vortice.Direct3D.FeatureLevel.Level_10_1
-            };
+                Vortice.Direct3D.FeatureLevel[] featureLevels = new[]
+                {
+                    Vortice.Direct3D.FeatureLevel.Level_11_1,
+                    Vortice.Direct3D.FeatureLevel.Level_11_0,
+                    Vortice.Direct3D.FeatureLevel.Level_10_1
+                };
 
-            ID3D11DeviceContext _d3dContext;
+                ID3D11DeviceContext _d3dContext;
 
-            // D3D11 device
-            D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
-                featureLevels, out _d3dDevice, out _d3dContext);
+                // D3D11 device
+                D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
+                    featureLevels, out _d3dDevice, out _d3dContext);
 
-            // DXGI swapchain
-            using var dxgiFactory = getFactory();
+                // DXGI swapchain
+                using var dxgiFactory = getFactory();
 
-            var swapDesc = new SwapChainDescription1
-            {
-                Format = GetPixelFormat(),
-                Width = (uint)Math.Max(ActualWidth, 8),
-                Height = (uint)Math.Max(ActualHeight, 8),
-                BufferCount = 2,
-                SampleDescription = new SampleDescription(1, 0),
-                BufferUsage = Usage.RenderTargetOutput,
-                SwapEffect = SwapEffect.FlipSequential,
-                Scaling = Scaling.Stretch,
-                AlphaMode = Vortice.DXGI.AlphaMode.Ignore
-            };
+                var swapDesc = new SwapChainDescription1
+                {
+                    Format = GetPixelFormat(),
+                    Width = (uint)Math.Max(ActualWidth, 8),
+                    Height = (uint)Math.Max(ActualHeight, 8),
+                    BufferCount = 2,
+                    SampleDescription = new SampleDescription(1, 0),
+                    BufferUsage = Usage.RenderTargetOutput,
+                    SwapEffect = SwapEffect.FlipSequential,
+                    Scaling = Scaling.Stretch,
+                    AlphaMode = Vortice.DXGI.AlphaMode.Ignore
+                };
 
-            _swapChain = dxgiFactory.CreateSwapChainForComposition(_d3dDevice, swapDesc);
+                _swapChain = dxgiFactory.CreateSwapChainForComposition(_d3dDevice, swapDesc);
 
-            GetPanelNative().SetSwapChain(_swapChain);
+                GetPanelNative().SetSwapChain(_swapChain);
 
-            _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(FactoryType.SingleThreaded);
-            using IDXGIDevice dxgiDevice = _d3dDevice.QueryInterface<IDXGIDevice>();
-            _d2dDevice = _d2dFactory.CreateDevice(dxgiDevice);
-            _d2dContext = _d2dDevice.CreateDeviceContext(DeviceContextOptions.None);
+                _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(FactoryType.SingleThreaded);
+                using IDXGIDevice dxgiDevice = _d3dDevice.QueryInterface<IDXGIDevice>();
+                _d2dDevice = _d2dFactory.CreateDevice(dxgiDevice);
+                _d2dContext = _d2dDevice.CreateDeviceContext(DeviceContextOptions.None);
+            });
 
             ResizeRenderTarget();
             StartRenderLoop();
@@ -157,53 +183,63 @@ namespace xDRCal.Controls
 
         private void ResizeRenderTarget()
         {
-            if (_swapChain == null)
+            DispatcherQueue.TryEnqueue(() =>
             {
-                throw new InvalidOperationException("Missing swap chain");
-            }
+                if (_swapChain == null)
+                {
+                    throw new InvalidOperationException("Missing swap chain");
+                }
 
-            if (_d2dContext == null)
-            {
-                throw new InvalidOperationException("Missing D2D context");
-            }
+                if (_d2dContext == null)
+                {
+                    throw new InvalidOperationException("Missing D2D context");
+                }
 
-            // Release old target before resizing
-            _d2dContext.Target = null;
-            _d2dTargetBitmap?.Dispose();
-            _d2dTargetBitmap = null;
+                // Release old target before resizing
+                _d2dContext.Target = null;
+                _d2dTargetBitmap?.Dispose();
+                _d2dTargetBitmap = null;
 
-            var format = GetPixelFormat();
+                var format = GetPixelFormat();
 
-            var result = _swapChain.ResizeBuffers(
-                2,
-                (uint)Math.Max(ActualWidth, 8),
-                (uint)Math.Max(ActualHeight, 8),
-                format,
-                SwapChainFlags.None);
+                var result = _swapChain.ResizeBuffers(
+                    2,
+                    (uint)Math.Max(ActualWidth, 8),
+                    (uint)Math.Max(ActualHeight, 8),
+                    format,
+                    SwapChainFlags.None);
 
-            if (result.Failure)
-            {
-                return;
-            }
+                if (result.Failure)
+                {
+                    return;
+                }
 
-            using var backBuffer = GetBuffer();
-            using var dxgiSurface = backBuffer?.QueryInterface<IDXGISurface>();
+                using var backBuffer = GetBuffer();
+                using var dxgiSurface = backBuffer?.QueryInterface<IDXGISurface>();
 
-            var props = new BitmapProperties1(
-                new PixelFormat(format, Vortice.DCommon.AlphaMode.Ignore),
-                96, 96,
-                BitmapOptions.Target | BitmapOptions.CannotDraw);
+                var props = new BitmapProperties1(
+                    new PixelFormat(format, Vortice.DCommon.AlphaMode.Ignore),
+                    96, 96,
+                    BitmapOptions.Target | BitmapOptions.CannotDraw);
 
-            _d2dTargetBitmap = _d2dContext.CreateBitmapFromDxgiSurface(dxgiSurface, props);
-            _d2dContext.Target = _d2dTargetBitmap;
-            _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1, 1));
+                _d2dTargetBitmap = _d2dContext.CreateBitmapFromDxgiSurface(dxgiSurface, props);
+                _d2dContext.Target = _d2dTargetBitmap;
+                _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1, 1));
+            });
+            Render();
         }
 
-        private void OnRender(object sender, object e)
+        private void Render()
+        {
+            DispatcherQueue.TryEnqueue(DoRender);
+        }
+
+        private void DoRender()
         {
             if (_d2dContext == null)
             {
-                throw new InvalidOperationException("Missing D2D context");
+                // render queued before D2D set up. This can happen early in the lifecycle.
+                return;
             }
 
             if (_brush == null)
