@@ -5,7 +5,7 @@
              x:Name="Root">
     <StackPanel Orientation="Horizontal" Margin="0">
         <TextBox x:Name="ValueBox"
-                 Width="100"
+                 Width="128"
                  IsReadOnly="True"
                  FontFamily="Consolas"
                  Margin="0,0,0,0"/>
@@ -13,7 +13,7 @@
                 Minimum="0"
                 Maximum="255"
                 TickFrequency="1"
-                Width="256"
+                Width="1024"
                 ValueChanged="Slider_ValueChanged" />
     </StackPanel>
 </UserControl>

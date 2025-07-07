@@ -96,7 +96,7 @@ namespace xDRCal.Controls
 
                 case SliderDisplayMode.Nits:
                     double nits = Util.PQCodeToNits(value);
-                    ValueBox.Text = $"{nits:0} nits";
+                    ValueBox.Text = $"{nits:G4} nits";
                     break;
             }
         }
