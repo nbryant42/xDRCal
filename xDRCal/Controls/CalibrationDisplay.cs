@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using SharpGen.Runtime;
 using System;
-using System.Diagnostics;
 using Vortice.DCommon;
 using Vortice.Direct2D1;
 using Vortice.Direct3D;
@@ -24,10 +23,19 @@ namespace xDRCal.Controls
         private ID2D1SolidColorBrush? _brush;
 
         private ID2D1Bitmap1? _d2dTargetBitmap;
+        private bool hdrMode;
 
         public short LuminosityA { get; set; }
         public short LuminosityB { get; set; }
-        public bool HdrMode { get; set; }
+        public bool HdrMode
+        {
+            get => hdrMode;
+            set
+            {
+                hdrMode = value;
+                ResizeRenderTarget();
+            }
+        }
 
         private DispatcherQueueTimer? _renderTimer;
 
@@ -81,10 +89,15 @@ namespace xDRCal.Controls
         }
 
 
-        private Vortice.WinUI.ISwapChainPanelNative CreatePanelNative()
+        private Vortice.WinUI.ISwapChainPanelNative GetPanelNative()
         {
             using ComObject comObject = new ComObject(this);
             return comObject.QueryInterface<Vortice.WinUI.ISwapChainPanelNative>();
+        }
+
+        private Format GetPixelFormat()
+        {
+            return HdrMode ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
         }
 
         private void InitializeDirectX()
@@ -107,9 +120,9 @@ namespace xDRCal.Controls
 
             var swapDesc = new SwapChainDescription1
             {
-                Format = Format.R16G16B16A16_Float,
-                Width = (uint)Math.Max(ActualWidth, 1),
-                Height = (uint)Math.Max(ActualHeight, 1),
+                Format = GetPixelFormat(),
+                Width = (uint)Math.Max(ActualWidth, 8),
+                Height = (uint)Math.Max(ActualHeight, 8),
                 BufferCount = 2,
                 SampleDescription = new SampleDescription(1, 0),
                 BufferUsage = Usage.RenderTargetOutput,
@@ -118,16 +131,9 @@ namespace xDRCal.Controls
                 AlphaMode = Vortice.DXGI.AlphaMode.Ignore
             };
 
-            var nativePanel = CreatePanelNative();
-            var mediaFactory = dxgiFactory.QueryInterfaceOrNull<IDXGIFactoryMedia>();
-            if (mediaFactory == null)
-            {
-                throw new InvalidOperationException("IDXGIFactoryMedia not supported.");
-            }
-
             _swapChain = dxgiFactory.CreateSwapChainForComposition(_d3dDevice, swapDesc);
 
-            nativePanel.SetSwapChain(_swapChain);
+            GetPanelNative().SetSwapChain(_swapChain);
 
             _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(FactoryType.SingleThreaded);
             using IDXGIDevice dxgiDevice = _d3dDevice.QueryInterface<IDXGIDevice>();
@@ -166,11 +172,13 @@ namespace xDRCal.Controls
             _d2dTargetBitmap?.Dispose();
             _d2dTargetBitmap = null;
 
+            var format = GetPixelFormat();
+
             var result = _swapChain.ResizeBuffers(
                 2,
-                (uint)Math.Max(ActualWidth, 1),
-                (uint)Math.Max(ActualHeight, 1),
-                Format.R16G16B16A16_Float,
+                (uint)Math.Max(ActualWidth, 8),
+                (uint)Math.Max(ActualHeight, 8),
+                format,
                 SwapChainFlags.None);
 
             if (result.Failure)
@@ -182,7 +190,7 @@ namespace xDRCal.Controls
             using var dxgiSurface = backBuffer?.QueryInterface<IDXGISurface>();
 
             var props = new BitmapProperties1(
-                new PixelFormat(Format.R16G16B16A16_Float, Vortice.DCommon.AlphaMode.Ignore),
+                new PixelFormat(format, Vortice.DCommon.AlphaMode.Ignore),
                 96, 96,
                 BitmapOptions.Target | BitmapOptions.CannotDraw);
 
@@ -220,16 +228,25 @@ namespace xDRCal.Controls
 
             float cellWidth = width * 0.125f;
             float cellHeight = height * 0.125f;
+            float lumaA, lumaB;
 
-            float nitsA = Util.PQCodeToNits(LuminosityA) * 0.0125f;
-            float nitsB = Util.PQCodeToNits(LuminosityB) * 0.0125f;
+            if (HdrMode)
+            {
+                lumaA = Util.PQCodeToNits(LuminosityA) * 0.0125f;
+                lumaB = Util.PQCodeToNits(LuminosityB) * 0.0125f;
+            }
+            else
+            {
+                lumaA = LuminosityA / 255.0f;
+                lumaB = LuminosityB / 255.0f;
+            }
 
             for (int row = 0; row < 8; row++)
             {
                 for (int col = 0; col < 8; col++)
                 {
                     bool isA = (row + col) % 2 == 0;
-                    float luma = isA ? nitsA : nitsB;
+                    float luma = isA ? lumaA : lumaB;
                     _brush.Color = new Color4(luma, luma, luma, 1);
 
                     var rect = new Rect(
@@ -241,7 +258,7 @@ namespace xDRCal.Controls
                     _d2dContext.FillRectangle(rect, _brush);
                 }
             }
-            
+
             _d2dContext.EndDraw();
             _swapChain.Present(1, PresentFlags.None);
         }
