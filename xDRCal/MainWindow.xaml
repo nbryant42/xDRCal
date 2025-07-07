@@ -30,7 +30,9 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Bottom"
                 Margin="0,0,0,0"
-                Background="#FF171717">
+                Background="#FF171717"
+                Canvas.ZIndex="1"
+                Opacity="1.0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Background="#FF171717">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <ToggleSwitch x:Name="FullscreenToggle"
