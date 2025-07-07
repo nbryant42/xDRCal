@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using SharpGen.Runtime;
 using System;
+using System.Diagnostics;
 using Vortice.DCommon;
 using Vortice.Direct2D1;
 using Vortice.Direct3D;
@@ -127,43 +128,50 @@ namespace xDRCal.Controls
         {
             DispatcherQueue.TryEnqueue(() =>
             {
-                Vortice.Direct3D.FeatureLevel[] featureLevels = new[]
+                try
                 {
+                    Vortice.Direct3D.FeatureLevel[] featureLevels = new[]
+                    {
                     Vortice.Direct3D.FeatureLevel.Level_11_1,
                     Vortice.Direct3D.FeatureLevel.Level_11_0,
                     Vortice.Direct3D.FeatureLevel.Level_10_1
                 };
 
-                ID3D11DeviceContext _d3dContext;
+                    ID3D11DeviceContext _d3dContext;
 
-                // D3D11 device
-                D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
-                    featureLevels, out _d3dDevice, out _d3dContext);
+                    // D3D11 device
+                    D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
+                        featureLevels, out _d3dDevice, out _d3dContext);
 
-                // DXGI swapchain
-                using var dxgiFactory = getFactory();
+                    // DXGI swapchain
+                    using var dxgiFactory = getFactory();
 
-                var swapDesc = new SwapChainDescription1
+                    var swapDesc = new SwapChainDescription1
+                    {
+                        Format = GetPixelFormat(),
+                        Width = (uint)Math.Max(ActualWidth, 8),
+                        Height = (uint)Math.Max(ActualHeight, 8),
+                        BufferCount = 2,
+                        SampleDescription = new SampleDescription(1, 0),
+                        BufferUsage = Usage.RenderTargetOutput,
+                        SwapEffect = SwapEffect.FlipSequential,
+                        Scaling = Scaling.Stretch,
+                        AlphaMode = Vortice.DXGI.AlphaMode.Ignore
+                    };
+
+                    _swapChain = dxgiFactory.CreateSwapChainForComposition(_d3dDevice, swapDesc);
+
+                    GetPanelNative().SetSwapChain(_swapChain);
+
+                    _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(FactoryType.SingleThreaded);
+                    using IDXGIDevice dxgiDevice = _d3dDevice.QueryInterface<IDXGIDevice>();
+                    _d2dDevice = _d2dFactory.CreateDevice(dxgiDevice);
+                    _d2dContext = _d2dDevice.CreateDeviceContext(DeviceContextOptions.None);
+                }
+                catch (Exception ex)
                 {
-                    Format = GetPixelFormat(),
-                    Width = (uint)Math.Max(ActualWidth, 8),
-                    Height = (uint)Math.Max(ActualHeight, 8),
-                    BufferCount = 2,
-                    SampleDescription = new SampleDescription(1, 0),
-                    BufferUsage = Usage.RenderTargetOutput,
-                    SwapEffect = SwapEffect.FlipSequential,
-                    Scaling = Scaling.Stretch,
-                    AlphaMode = Vortice.DXGI.AlphaMode.Ignore
-                };
-
-                _swapChain = dxgiFactory.CreateSwapChainForComposition(_d3dDevice, swapDesc);
-
-                GetPanelNative().SetSwapChain(_swapChain);
-
-                _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(FactoryType.SingleThreaded);
-                using IDXGIDevice dxgiDevice = _d3dDevice.QueryInterface<IDXGIDevice>();
-                _d2dDevice = _d2dFactory.CreateDevice(dxgiDevice);
-                _d2dContext = _d2dDevice.CreateDeviceContext(DeviceContextOptions.None);
+                    Debug.WriteLine(ex.ToString());
+                }
             });
 
             ResizeRenderTarget();
@@ -185,46 +193,53 @@ namespace xDRCal.Controls
         {
             DispatcherQueue.TryEnqueue(() =>
             {
-                if (_swapChain == null)
+                try
                 {
-                    throw new InvalidOperationException("Missing swap chain");
-                }
+                    if (_swapChain == null)
+                    {
+                        throw new InvalidOperationException("Missing swap chain");
+                    }
 
-                if (_d2dContext == null)
+                    if (_d2dContext == null)
+                    {
+                        throw new InvalidOperationException("Missing D2D context");
+                    }
+
+                    // Release old target before resizing
+                    _d2dContext.Target = null;
+                    _d2dTargetBitmap?.Dispose();
+                    _d2dTargetBitmap = null;
+
+                    var format = GetPixelFormat();
+
+                    var result = _swapChain.ResizeBuffers(
+                        2,
+                        (uint)Math.Max(ActualWidth, 8),
+                        (uint)Math.Max(ActualHeight, 8),
+                        format,
+                        SwapChainFlags.None);
+
+                    if (result.Failure)
+                    {
+                        return;
+                    }
+
+                    using var backBuffer = GetBuffer();
+                    using var dxgiSurface = backBuffer?.QueryInterface<IDXGISurface>();
+
+                    var props = new BitmapProperties1(
+                        new PixelFormat(format, Vortice.DCommon.AlphaMode.Ignore),
+                        96, 96,
+                        BitmapOptions.Target | BitmapOptions.CannotDraw);
+
+                    _d2dTargetBitmap = _d2dContext.CreateBitmapFromDxgiSurface(dxgiSurface, props);
+                    _d2dContext.Target = _d2dTargetBitmap;
+                    _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1, 1));
+                }
+                catch (Exception ex)
                 {
-                    throw new InvalidOperationException("Missing D2D context");
+                    Debug.WriteLine(ex.ToString());
                 }
-
-                // Release old target before resizing
-                _d2dContext.Target = null;
-                _d2dTargetBitmap?.Dispose();
-                _d2dTargetBitmap = null;
-
-                var format = GetPixelFormat();
-
-                var result = _swapChain.ResizeBuffers(
-                    2,
-                    (uint)Math.Max(ActualWidth, 8),
-                    (uint)Math.Max(ActualHeight, 8),
-                    format,
-                    SwapChainFlags.None);
-
-                if (result.Failure)
-                {
-                    return;
-                }
-
-                using var backBuffer = GetBuffer();
-                using var dxgiSurface = backBuffer?.QueryInterface<IDXGISurface>();
-
-                var props = new BitmapProperties1(
-                    new PixelFormat(format, Vortice.DCommon.AlphaMode.Ignore),
-                    96, 96,
-                    BitmapOptions.Target | BitmapOptions.CannotDraw);
-
-                _d2dTargetBitmap = _d2dContext.CreateBitmapFromDxgiSurface(dxgiSurface, props);
-                _d2dContext.Target = _d2dTargetBitmap;
-                _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1, 1));
             });
             Render();
         }
@@ -236,67 +251,74 @@ namespace xDRCal.Controls
 
         private void DoRender()
         {
-            if (_d2dContext == null)
+            try
             {
-                // render queued before D2D set up. This can happen early in the lifecycle.
-                return;
-            }
-
-            if (_brush == null)
-            {
-                throw new InvalidOperationException("Missing Brush");
-            }
-
-            if (_swapChain == null)
-            {
-                throw new InvalidOperationException("Missing Swapchain");
-            }
-
-            _d2dContext.BeginDraw();
-            _d2dContext.Clear(new Color4(0, 0, 0, 1));
-
-            float width = (float)ActualWidth;
-            float height = (float)ActualHeight;
-
-            // ActualWidth and ActualHeight can be 0 early in the app lifecycle.
-            if (width < 1 || height < 1)
-                return; // Skip frame
-
-            float cellWidth = width * 0.125f;
-            float cellHeight = height * 0.125f;
-            float lumaA, lumaB;
-
-            if (HdrMode)
-            {
-                lumaA = Util.PQCodeToNits(LuminosityA) * 0.0125f;
-                lumaB = Util.PQCodeToNits(LuminosityB) * 0.0125f;
-            }
-            else
-            {
-                lumaA = LuminosityA / 255.0f;
-                lumaB = LuminosityB / 255.0f;
-            }
-
-            for (int row = 0; row < 8; row++)
-            {
-                for (int col = 0; col < 8; col++)
+                if (_d2dContext == null)
                 {
-                    bool isA = (row + col) % 2 == 0;
-                    float luma = isA ? lumaA : lumaB;
-                    _brush.Color = new Color4(luma, luma, luma, 1);
-
-                    var rect = new Rect(
-                        col * cellWidth,
-                        row * cellHeight,
-                        (col + 1) * cellWidth,
-                        (row + 1) * cellHeight);
-
-                    _d2dContext.FillRectangle(rect, _brush);
+                    // render queued before D2D set up. This can happen early in the lifecycle.
+                    return;
                 }
-            }
 
-            _d2dContext.EndDraw();
-            _swapChain.Present(1, PresentFlags.None);
+                if (_brush == null)
+                {
+                    throw new InvalidOperationException("Missing Brush");
+                }
+
+                if (_swapChain == null)
+                {
+                    throw new InvalidOperationException("Missing Swapchain");
+                }
+
+                _d2dContext.BeginDraw();
+                _d2dContext.Clear(new Color4(0, 0, 0, 1));
+
+                float width = (float)ActualWidth;
+                float height = (float)ActualHeight;
+
+                // ActualWidth and ActualHeight can be 0 early in the app lifecycle.
+                if (width < 1 || height < 1)
+                    return; // Skip frame
+
+                float cellWidth = width * 0.125f;
+                float cellHeight = height * 0.125f;
+                float lumaA, lumaB;
+
+                if (HdrMode)
+                {
+                    lumaA = Util.PQCodeToNits(LuminosityA) * 0.0125f;
+                    lumaB = Util.PQCodeToNits(LuminosityB) * 0.0125f;
+                }
+                else
+                {
+                    lumaA = LuminosityA / 255.0f;
+                    lumaB = LuminosityB / 255.0f;
+                }
+
+                for (int row = 0; row < 8; row++)
+                {
+                    for (int col = 0; col < 8; col++)
+                    {
+                        bool isA = (row + col) % 2 == 0;
+                        float luma = isA ? lumaA : lumaB;
+                        _brush.Color = new Color4(luma, luma, luma, 1);
+
+                        var rect = new Rect(
+                            col * cellWidth,
+                            row * cellHeight,
+                            (col + 1) * cellWidth,
+                            (row + 1) * cellHeight);
+
+                        _d2dContext.FillRectangle(rect, _brush);
+                    }
+                }
+
+                _d2dContext.EndDraw();
+                _swapChain.Present(1, PresentFlags.None);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex.ToString());
+            }
         }
     }
 }
