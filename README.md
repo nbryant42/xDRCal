@@ -14,6 +14,8 @@ You'll need to install Visual Studio and the relevant workloads.
 
 See here: https://learn.microsoft.com/en-us/windows/apps/get-started/start-here?tabs=vs-2022-17-10
 
+(I believe this document may neglect to mention that you also need the .NET workload, and you will definitely need the Windows 11 SDK 10.0.26100.0 component as well.)
+
 ## Usage
 
 Drag one slider to full black, and the other to almost black to see where it's possible to see detail. Do the opposite for the whites.
