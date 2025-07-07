@@ -21,7 +21,7 @@
         </Grid.KeyboardAccelerators>
 
         <!-- Layer 0: Full-screen Calibration View -->
-        <controls:CalibrationDisplay x:Name="CalibrationView" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <controls:CalibrationDisplay x:Name="CalibrationView" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
 
         <!-- Layer 1: Floating Controls -->
         <Border BorderThickness="1,1,1,0"

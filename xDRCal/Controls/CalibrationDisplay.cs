@@ -104,7 +104,7 @@ namespace xDRCal.Controls
         private void StartRenderLoop()
         {
             _renderTimer = DispatcherQueue.CreateTimer();
-            _renderTimer.Interval = TimeSpan.FromMilliseconds(1000.0/30.0);
+            _renderTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / 30.0);
             _renderTimer.Tick += (_, _) => DoRender();
             _renderTimer.Start();
         }
@@ -148,9 +148,14 @@ namespace xDRCal.Controls
 
                     ID3D11DeviceContext _d3dContext;
 
+#if DEBUG
+                    var flags = DeviceCreationFlags.BgraSupport | DeviceCreationFlags.Debug;
+#else
+                    var flags = DeviceCreationFlags.BgraSupport;
+#endif
+
                     // D3D11 device
-                    D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport | DeviceCreationFlags.Debug,
-                        featureLevels, out _d3dDevice, out _d3dContext);
+                    D3D11.D3D11CreateDevice(null, DriverType.Hardware, flags, featureLevels, out _d3dDevice, out _d3dContext);
 
                     // DXGI swapchain
                     using var dxgiFactory = getFactory();
@@ -176,15 +181,15 @@ namespace xDRCal.Controls
                     using IDXGIDevice dxgiDevice = _d3dDevice.QueryInterface<IDXGIDevice>();
                     _d2dDevice = _d2dFactory.CreateDevice(dxgiDevice);
                     _d2dContext = _d2dDevice.CreateDeviceContext(DeviceContextOptions.None);
+
+                    ResizeRenderTarget();
+                    StartRenderLoop();
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine(ex.ToString());
                 }
             });
-
-            ResizeRenderTarget();
-            StartRenderLoop();
         }
 
         private ID3D11Texture2D? GetBuffer()
@@ -215,9 +220,14 @@ namespace xDRCal.Controls
                     }
 
                     // Release old target before resizing
+                    _d2dContext.Target?.Dispose();
                     _d2dContext.Target = null;
+
                     _d2dTargetBitmap?.Dispose();
                     _d2dTargetBitmap = null;
+
+                    _brush?.Dispose();
+                    _brush = null;
 
                     var format = GetPixelFormat();
 
@@ -262,21 +272,8 @@ namespace xDRCal.Controls
         {
             try
             {
-                if (_d2dContext == null || _isUnloading)
-                {
-                    // render queued before D2D set up. This can happen early in the lifecycle.
+                if (_isUnloading || _d2dContext == null || _swapChain == null || _brush == null)
                     return;
-                }
-
-                if (_brush == null)
-                {
-                    throw new InvalidOperationException("Missing Brush");
-                }
-
-                if (_swapChain == null)
-                {
-                    throw new InvalidOperationException("Missing Swapchain");
-                }
 
                 _d2dContext.BeginDraw();
                 _d2dContext.Clear(new Color4(0, 0, 0, 1));
@@ -294,7 +291,7 @@ namespace xDRCal.Controls
 
                 if (HdrMode)
                 {
-                    lumaA = Util.PQCodeToNits(LuminosityA) * 0.0125f;
+                    lumaA = Util.PQCodeToNits(LuminosityA) * 0.0125f; // 1/80 nits
                     lumaB = Util.PQCodeToNits(LuminosityB) * 0.0125f;
                 }
                 else

@@ -90,15 +90,15 @@ namespace xDRCal
             var frac = SizeSlider.Value / 100.0;
             var totalArea = actualWidth * actualHeight;
             var cutoff = (shortEdge * shortEdge) / totalArea;
+            // If frac <= cutoff, the square fits inside the shorter edge;
+            // otherwise, we scale one dimension to match the desired area fraction.
 
             if (frac <= cutoff)
             {
-                // Generate a square with area totalArea * frac
                 var side = Math.Sqrt(totalArea * frac);
                 CalibrationView.Width = side;
                 CalibrationView.Height = side;
             }
-            // otherwise, scale long edge only
             else if (actualWidth > actualHeight)
             {
                 CalibrationView.Width = actualWidth * frac;
