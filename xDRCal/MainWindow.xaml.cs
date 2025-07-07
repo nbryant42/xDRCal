@@ -93,19 +93,19 @@ namespace xDRCal
             {
                 // Generate a square with area totalArea * frac
                 var side = Math.Sqrt(totalArea * frac);
-                CalibrationViewbox.Width = side;
-                CalibrationViewbox.Height = side;
+                CalibrationView.Width = side;
+                CalibrationView.Height = side;
             }
             // otherwise, scale long edge only
             else if (actualWidth > actualHeight)
             {
-                CalibrationViewbox.Width = actualWidth * frac;
-                CalibrationViewbox.Height = actualHeight;
+                CalibrationView.Width = actualWidth * frac;
+                CalibrationView.Height = actualHeight;
             }
             else
             {
-                CalibrationViewbox.Width = actualWidth;
-                CalibrationViewbox.Height = actualHeight * frac;
+                CalibrationView.Width = actualWidth;
+                CalibrationView.Height = actualHeight * frac;
             }
         }
 

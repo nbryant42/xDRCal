@@ -39,16 +39,15 @@ namespace xDRCal.Controls
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            if (ActualWidth > 0 && ActualHeight > 0)
+            if (_swapChain == null && ActualWidth > 0 && ActualHeight > 0)
             {
                 InitializeDirectX();
             }
-            StartRenderLoop();
         }
 
         private void OnSizeChanged(object sender, SizeChangedEventArgs e)
         {
-            if (e.NewSize.Width > 0 && e.NewSize.Height > 0)
+            if (ActualWidth > 0 && ActualHeight > 0)
             {
                 if (_swapChain == null)
                 {
@@ -100,11 +99,12 @@ namespace xDRCal.Controls
             ID3D11DeviceContext _d3dContext;
 
             // D3D11 device
-            D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport | DeviceCreationFlags.Debug,
+            D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
                 featureLevels, out _d3dDevice, out _d3dContext);
 
             // DXGI swapchain
             using var dxgiFactory = getFactory();
+
             var swapDesc = new SwapChainDescription1
             {
                 Format = Format.R16G16B16A16_Float,
@@ -135,6 +135,7 @@ namespace xDRCal.Controls
             _d2dContext = _d2dDevice.CreateDeviceContext(DeviceContextOptions.None);
 
             ResizeRenderTarget();
+            StartRenderLoop();
         }
 
         private void ResizeRenderTarget()
@@ -143,6 +144,14 @@ namespace xDRCal.Controls
             {
                 throw new InvalidOperationException("Missing swap chain");
             }
+
+            _swapChain.ResizeBuffers(
+                2,
+                (uint)Math.Max(ActualWidth, 1),
+                (uint)Math.Max(ActualHeight, 1),
+                Format.R16G16B16A16_Float,
+                SwapChainFlags.None);
+
             _swapChain.GetBuffer<ID3D11Texture2D>(0, out var backBuffer);
             using var dxgiSurface = backBuffer?.QueryInterface<IDXGISurface>();
 
@@ -157,7 +166,7 @@ namespace xDRCal.Controls
             }
             _d2dTargetBitmap = _d2dContext.CreateBitmapFromDxgiSurface(dxgiSurface, props);
             _d2dContext.Target = _d2dTargetBitmap;
-            _brush = _d2dContext?.CreateSolidColorBrush(new Color4(1, 1, 1, 1));
+            _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1, 1));
         }
 
         private void OnRender(object sender, object e)
@@ -210,13 +219,8 @@ namespace xDRCal.Controls
                     _d2dContext.FillRectangle(rect, _brush);
                 }
             }
-            var result = _d2dContext.EndDraw();
-
-            if (result.Failure)
-            {
-                Debug.WriteLine("EndDraw failed: " + result.Code);
-            }
-
+            
+            _d2dContext.EndDraw();
             _swapChain.Present(1, PresentFlags.None);
         }
     }
