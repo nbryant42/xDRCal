@@ -57,11 +57,13 @@ namespace xDRCal.Controls
         }
 
         private DispatcherQueueTimer? _renderTimer;
+        private bool _isUnloading = false;
 
         public CalibrationDisplay()
         {
             this.Loaded += OnLoaded;
             this.SizeChanged += OnSizeChanged;
+            this.Unloaded += OnUnloaded;
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
@@ -70,6 +72,13 @@ namespace xDRCal.Controls
             {
                 InitializeDirectX();
             }
+        }
+
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            _isUnloading = true;
+            _renderTimer?.Stop();
+            _renderTimer = null;
         }
 
         private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -132,15 +141,15 @@ namespace xDRCal.Controls
                 {
                     Vortice.Direct3D.FeatureLevel[] featureLevels = new[]
                     {
-                    Vortice.Direct3D.FeatureLevel.Level_11_1,
-                    Vortice.Direct3D.FeatureLevel.Level_11_0,
-                    Vortice.Direct3D.FeatureLevel.Level_10_1
-                };
+                        Vortice.Direct3D.FeatureLevel.Level_11_1,
+                        Vortice.Direct3D.FeatureLevel.Level_11_0,
+                        Vortice.Direct3D.FeatureLevel.Level_10_1
+                    };
 
                     ID3D11DeviceContext _d3dContext;
 
                     // D3D11 device
-                    D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
+                    D3D11.D3D11CreateDevice(null, DriverType.Hardware, DeviceCreationFlags.BgraSupport | DeviceCreationFlags.Debug,
                         featureLevels, out _d3dDevice, out _d3dContext);
 
                     // DXGI swapchain
@@ -253,7 +262,7 @@ namespace xDRCal.Controls
         {
             try
             {
-                if (_d2dContext == null)
+                if (_d2dContext == null || _isUnloading)
                 {
                     // render queued before D2D set up. This can happen early in the lifecycle.
                     return;
