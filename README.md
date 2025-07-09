@@ -32,6 +32,6 @@ The HDR test pattern and UI controls are both composited into a single HWND usin
 
 ## See also
 
-OLED panel users may notice that their display follows a pure Gamma 2.2 curve when Windows is in SDR mode, leading to black crush, but that SDR programs (such as this one, when the HDR toggle is turned off) are mapped to higher sRGB brightness levels in the blacks from 0x00 through 0x04 or so. This tends not to be the case on LCD panels (at least, not my Samsung G65B), on which the low SDR signal levels are definitely quick visible.
+OLED panel users may notice that their display follows a pure Gamma 2.2 curve when Windows is in SDR mode, leading to black crush, but that SDR programs (such as this one, when the HDR toggle is turned off) are mapped to higher sRGB brightness levels in the blacks from 0x00 through 0x04 or so. This tends not to be the case on LCD panels (at least, not my Samsung G65B), on which the low SDR signal levels are definitely quite visible.
 
 Opinions differ on what's best, and there is no One True Way. Some content was mastered to 2.2, other content to sRGB, and it's anyone's guess which is which. To change your Windows behavior in SDR mode, see https://github.com/dylanraga/win11hdr-srgb-to-gamma2.2-icm
