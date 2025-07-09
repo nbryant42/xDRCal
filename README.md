@@ -28,9 +28,7 @@ The bottom slider scales the test pattern by screen area percentage. Most HDR mo
 
 ## Known issue
 
-HDR test pattern UI controls are composited into a single HWND using the WinUI XAML layer via a SwapChainPanel. This leads to occasional
-glitches where the HDR output overwrites the control panel. The fix appears to involve splitting SDR and HDR into child HWNDs. Until I find
-the time for that, bang on F11 or F12 a few times, hover the mouse over where you think the controls are, or just hit Alt-F4.
+The HDR test pattern and UI controls are both composited into a single HWND using the WinUI XAML layer via a SwapChainPanel. This leads to occasional glitches where the HDR output overwrites the control panel. The fix appears to involve splitting SDR and HDR into child HWNDs. Until I find the time for that, bang on F11 or F12 a few times, hover the mouse over where you think the controls are, or just hit Alt-F4.
 
 ## See also
 
