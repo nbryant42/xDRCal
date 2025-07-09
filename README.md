@@ -31,3 +31,9 @@ The bottom slider scales the test pattern by screen area percentage. Most HDR mo
 HDR test pattern UI controls are composited into a single HWND using the WinUI XAML layer via a SwapChainPanel. This leads to occasional
 glitches where the HDR output overwrites the control panel. The fix appears to involve splitting SDR and HDR into child HWNDs. Until I find
 the time for that, bang on F11 or F12 a few times, hover the mouse over where you think the controls are, or just hit Alt-F4.
+
+## See also
+
+OLED panel users may notice that their display follows a pure Gamma 2.2 curve when Windows is in SDR mode, leading to black crush, but that SDR programs (such as this one, when the SDR toggle is turned off) are mapped to higher sRGB brightness levels in the blacks from 0x00 through 0x04 or so. This tends not to be the case on LCD panels (at least, not my Samsung G65B), on which the low SDR signal levels are definitely quick visible.
+
+Opinions differ on what's best, and there is no One True Way. Some content was mastered to 2.2, other content to sRGB, and it's anyone's guess which is which. To change your Windows behavior in SDR mode, see https://github.com/dylanraga/win11hdr-srgb-to-gamma2.2-icm
