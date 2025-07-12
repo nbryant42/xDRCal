@@ -32,7 +32,7 @@
         </Grid>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Background="#FF171717" BorderThickness="4,4,4,0" BorderBrush="#FF171717">
+                    Background="#FF171717" BorderThickness="4,4,4,0" CornerRadius="6" BorderBrush="#FF171717">
                 
             <ToggleSwitch x:Name="FullscreenToggle"
                 Header="Fullscreen (F11)"
