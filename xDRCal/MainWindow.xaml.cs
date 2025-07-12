@@ -84,30 +84,30 @@ namespace xDRCal
 
         private void UpdateCalibrationScale()
         {
-            var actualWidth = RootGrid.ActualWidth;
-            var actualHeight = RootGrid.ActualHeight;
-            var shortEdge = Math.Min(actualWidth, actualHeight);
             var frac = SizeSlider.Value / 100.0;
+            var actualWidth = (int)RootGrid.ActualWidth;
+            var actualHeight = (int)RootGrid.ActualHeight;
+            var shortEdge = Math.Min(actualWidth, actualHeight);
             var totalArea = actualWidth * actualHeight;
-            var cutoff = (shortEdge * shortEdge) / totalArea;
-            // If frac <= cutoff, the square fits inside the shorter edge;
-            // otherwise, we scale one dimension to match the desired area fraction.
 
-            if (frac <= cutoff)
+            // Calculate the edge length if the display were square. Constrain to be a multiple of 8 to keep the pixel
+            // dimensions of the grid stable during resize, and reduce flicker
+            var square = (int)Math.Sqrt(totalArea * frac) / 8 * 8;
+
+            // Either the square fits inside the shorter edge, or we scale one dimension to match the desired area.
+            if (square <= shortEdge)
             {
-                var side = Math.Sqrt(totalArea * frac);
-                CalibrationView.Width = side;
-                CalibrationView.Height = side;
+                CalibrationView.Width = CalibrationView.Height = square;
             }
             else if (actualWidth > actualHeight)
             {
-                CalibrationView.Width = actualWidth * frac;
+                CalibrationView.Width = (int)(actualWidth * frac) / 8 * 8;
                 CalibrationView.Height = actualHeight;
             }
             else
             {
                 CalibrationView.Width = actualWidth;
-                CalibrationView.Height = actualHeight * frac;
+                CalibrationView.Height = (int)(actualHeight * frac) / 8 * 8;
             }
         }
 
