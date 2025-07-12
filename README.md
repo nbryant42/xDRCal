@@ -26,10 +26,6 @@ Drag one slider to full black, and the other to almost black to see where it's p
 
 The bottom slider scales the test pattern by screen area percentage. Most HDR monitors get brighter when they're only tasked to show bright whites on a smaller percentage of the screen. Note, however, that the "nits" readout in the app is only based on the signal we are sending to the monitor, and may not match the monitor's true capabilities, especially at 100% of the display area.
 
-## Known issue
-
-The HDR test pattern and UI controls are both composited into a single HWND using the WinUI XAML layer via a SwapChainPanel. This leads to occasional glitches where the HDR output overwrites the control panel. The fix appears to involve splitting SDR and HDR into child HWNDs. Until I find the time for that, bang on F11 or F12 a few times, hover the mouse over where you think the controls are, or just hit Alt-F4.
-
 ## See also
 
 OLED panel users may notice that their display follows a pure Gamma 2.2 curve when Windows is in SDR mode, leading to black crush, but that SDR programs (such as this one, when the HDR toggle is turned off) are mapped to higher sRGB brightness levels in the blacks from 0x00 through 0x04 or so. This tends not to be the case on LCD panels (at least, not my Samsung G65B), on which the low SDR signal levels are definitely quite visible.
