@@ -301,8 +301,8 @@ public sealed partial class CalibrationDisplay : SwapChainPanel
                     var rect = new Rect(
                         col * cellWidth,
                         row * cellHeight,
-                        (col + 1) * cellWidth - 1,
-                        (row + 1) * cellHeight - 1);
+                        (col + 1) * cellWidth,
+                        (row + 1) * cellHeight);
 
                     _d2dContext.FillRectangle(rect, _brush);
                 }
