@@ -1,19 +1,20 @@
 ﻿using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using SharpGen.Runtime;
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Vortice.DCommon;
 using Vortice.Direct2D1;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
+using Vortice.DirectComposition;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 
 namespace xDRCal.Controls;
 
-public sealed partial class CalibrationDisplay : SwapChainPanel
+public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
 {
     private ID3D11Device? _d3dDevice;
     private IDXGISwapChain1? _swapChain;
@@ -26,6 +27,9 @@ public sealed partial class CalibrationDisplay : SwapChainPanel
     private ID2D1Bitmap1? _d2dTargetBitmap;
     private bool hdrMode;
     private short luminosityA, luminosityB;
+
+    private IDCompositionDesktopDevice? _dcompDevice;
+    private IDCompositionVisual2? _visual;
 
     public short LuminosityA
     {
@@ -59,32 +63,31 @@ public sealed partial class CalibrationDisplay : SwapChainPanel
     private DispatcherQueueTimer? _renderTimer;
     private bool _isUnloading = false;
 
-    public CalibrationDisplay()
-    {
-        this.Loaded += OnLoaded;
-        this.SizeChanged += OnSizeChanged;
-        this.Unloaded += OnUnloaded;
-    }
+    private RectI pos;
+    private readonly IntPtr hwnd = _hwnd;
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    public void Init()
     {
-        if (_swapChain == null && ActualWidth > 0 && ActualHeight > 0)
+        if (_swapChain == null && pos.Width > 0 && pos.Height > 0)
         {
             InitializeDirectX();
         }
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    public void Dispose()
     {
         _isUnloading = true;
+        // TODO release refs
         _renderTimer?.Stop();
         _renderTimer = null;
     }
 
-    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    public void Reposition(RectI _pos)
     {
-        if (ActualWidth > 0 && ActualHeight > 0)
+        if (_pos.Width > 0 && _pos.Height > 0)
         {
+            pos = _pos;
+
             if (_swapChain == null)
             {
                 InitializeDirectX();
@@ -96,89 +99,98 @@ public sealed partial class CalibrationDisplay : SwapChainPanel
         }
     }
 
-    // We need to keep calling Present() on the swap chain fairly frequently, otherwise
-    // there are issues with composition clamping the brightness to SDR white. I haven't
-    // seen any hints of this in Windows Photo Viewer etc (e.g, the NVidia Overlay popup
-    // doesn't appear in other apps, providing a hint that they're not using constantly-
-    // refreshed swap chains), so it seems likely to be a WinUI 3-specific bug.
+    // Must call Render() at least 24Hz to prevent DComp from downgrading the output to SDR.
+    // This also happens in SwapChainPanel; apparently a well-known quirk of Windows
+    // (implemented for power conservation, etc)
     private void StartRenderLoop()
     {
-        _renderTimer = DispatcherQueue.CreateTimer();
-        _renderTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / 30.0);
+        _renderTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _renderTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / 24.0);
         _renderTimer.Tick += (_, _) => Render();
         _renderTimer.Start();
     }
 
-    private static IDXGIFactory2 getFactory()
+    private static IDXGIFactory2 GetFactory()
     {
         IDXGIFactory2? dxgiFactory;
         var result = DXGI.CreateDXGIFactory2<IDXGIFactory2>(false, out dxgiFactory);
 
         if (dxgiFactory == null || result.Failure)
         {
-            throw new InvalidOperationException("Failed to create D3D11 device");
+            throw new InvalidOperationException("Failed to create DXGI factory");
         }
         return dxgiFactory;
     }
 
-
-    private Vortice.WinUI.ISwapChainPanelNative GetPanelNative()
-    {
-        using ComObject comObject = new ComObject(this);
-        return comObject.QueryInterface<Vortice.WinUI.ISwapChainPanelNative>();
-    }
 
     private Format GetPixelFormat()
     {
         return HdrMode ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
     }
 
+    private static T DCompositionCreateDevice3<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>(IUnknown renderingDevice) where T : IDCompositionDevice2
+    {
+        DCompositionCreateDevice3(renderingDevice, typeof(T).GUID, out var dcompositionDevice).CheckError();
+#pragma warning disable CS8603 // Possible null reference return.
+        return MarshallingHelpers.FromPointer<T>(dcompositionDevice);
+#pragma warning restore CS8603 // Possible null reference return.
+    }
+
+    private unsafe static Result DCompositionCreateDevice3(IUnknown renderingDevice, Guid iid, out nint dcompositionDevice)
+    {
+        _ = IntPtr.Zero;
+        nint renderingDevice2 = MarshallingHelpers.ToCallbackPtr<IUnknown>(renderingDevice);
+        Result result;
+        fixed (nint* ptr = &dcompositionDevice)
+        {
+            void* dcompositionDevice2 = ptr;
+            result = DCompositionCreateDevice3_((void*)renderingDevice2, &iid, dcompositionDevice2);
+        }
+
+        GC.KeepAlive(renderingDevice);
+        return result;
+    }
+
+    [DllImport("dcomp.dll", CallingConvention = CallingConvention.StdCall, EntryPoint = "DCompositionCreateDevice3")]
+    private unsafe static extern int DCompositionCreateDevice3_(void* _renderingDevice, void* _iid,
+        void* _dcompositionDevice);
+
     private void InitializeDirectX()
     {
         try
         {
-            Vortice.Direct3D.FeatureLevel[] featureLevels = new[]
-            {
-                    Vortice.Direct3D.FeatureLevel.Level_11_1,
-                    Vortice.Direct3D.FeatureLevel.Level_11_0,
-                    Vortice.Direct3D.FeatureLevel.Level_10_1
-                };
+            _d3dDevice = CreateD3DDevice();
 
-            ID3D11DeviceContext _d3dContext;
-
-#if DEBUG
-            var flags = DeviceCreationFlags.BgraSupport | DeviceCreationFlags.Debug;
-#else
-                var flags = DeviceCreationFlags.BgraSupport;
-#endif
-
-            // D3D11 device
-            D3D11.D3D11CreateDevice(null, DriverType.Hardware, flags, featureLevels, out _d3dDevice, out _d3dContext);
-
-            // DXGI swapchain
-            using var dxgiFactory = getFactory();
+            using var dxgiFactory = GetFactory();
 
             var swapDesc = new SwapChainDescription1
             {
                 Format = GetPixelFormat(),
-                Width = (uint)Math.Max(ActualWidth, 8),
-                Height = (uint)Math.Max(ActualHeight, 8),
+                Width = (uint)Math.Max(pos.Width, 8),
+                Height = (uint)Math.Max(pos.Height, 8),
                 BufferCount = 2,
                 SampleDescription = new SampleDescription(1, 0),
                 BufferUsage = Usage.RenderTargetOutput,
-                SwapEffect = SwapEffect.FlipSequential,
+                SwapEffect = SwapEffect.FlipDiscard,
                 Scaling = Scaling.Stretch,
                 AlphaMode = Vortice.DXGI.AlphaMode.Ignore
             };
 
             _swapChain = dxgiFactory.CreateSwapChainForComposition(_d3dDevice, swapDesc);
 
-            GetPanelNative().SetSwapChain(_swapChain);
-
             _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(FactoryType.SingleThreaded);
             using IDXGIDevice dxgiDevice = _d3dDevice.QueryInterface<IDXGIDevice>();
             _d2dDevice = _d2dFactory.CreateDevice(dxgiDevice);
             _d2dContext = _d2dDevice.CreateDeviceContext(DeviceContextOptions.None);
+
+            // dcomp setup
+            _dcompDevice = DCompositionCreateDevice3<IDCompositionDesktopDevice>(dxgiDevice);
+            var dcompTarget = _dcompDevice.CreateSurfaceFromHwnd(hwnd, true);
+
+            _visual = _dcompDevice.CreateVisual();
+            _visual.SetContent(_swapChain);
+
+            dcompTarget.SetRoot(_visual);
 
             ResizeRenderTarget();
             StartRenderLoop();
@@ -189,31 +201,43 @@ public sealed partial class CalibrationDisplay : SwapChainPanel
         }
     }
 
-    private ID3D11Texture2D? GetBuffer()
+    private static ID3D11Device CreateD3DDevice()
+    {
+        Vortice.Direct3D.FeatureLevel[] featureLevels =
+        [
+            Vortice.Direct3D.FeatureLevel.Level_11_1,
+            Vortice.Direct3D.FeatureLevel.Level_11_0,
+            Vortice.Direct3D.FeatureLevel.Level_10_1
+        ];
+
+#if DEBUG
+        var flags = DeviceCreationFlags.BgraSupport | DeviceCreationFlags.Debug;
+#else
+                var flags = DeviceCreationFlags.BgraSupport;
+#endif
+
+        return D3D11.D3D11CreateDevice(DriverType.Hardware, flags, featureLevels); ;
+    }
+
+    private ID3D11Texture2D GetBuffer()
     {
         if (_swapChain == null)
         {
             throw new InvalidOperationException("Missing swap chain");
         }
 
-        _swapChain.GetBuffer<ID3D11Texture2D>(0, out var backBuffer);
-        return backBuffer;
+        return _swapChain.GetBuffer<ID3D11Texture2D>(0);
     }
 
     private void ResizeRenderTarget()
     {
+        if (_swapChain == null || _dcompDevice == null || _d2dContext == null || _visual == null)
+        {
+            return;
+        }
+
         try
         {
-            if (_swapChain == null)
-            {
-                throw new InvalidOperationException("Missing swap chain");
-            }
-
-            if (_d2dContext == null)
-            {
-                throw new InvalidOperationException("Missing D2D context");
-            }
-
             // Release old target before resizing
             _d2dContext.Target?.Dispose();
             _d2dContext.Target = null;
@@ -228,8 +252,8 @@ public sealed partial class CalibrationDisplay : SwapChainPanel
 
             var result = _swapChain.ResizeBuffers(
                 2,
-                (uint)Math.Max(ActualWidth, 8),
-                (uint)Math.Max(ActualHeight, 8),
+                (uint)Math.Max(pos.Width, 8),
+                (uint)Math.Max(pos.Height, 8),
                 format,
                 SwapChainFlags.None);
 
@@ -239,7 +263,7 @@ public sealed partial class CalibrationDisplay : SwapChainPanel
             }
 
             using var backBuffer = GetBuffer();
-            using var dxgiSurface = backBuffer?.QueryInterface<IDXGISurface>();
+            using var dxgiSurface = backBuffer.QueryInterface<IDXGISurface>();
 
             var props = new BitmapProperties1(
                 new PixelFormat(format, Vortice.DCommon.AlphaMode.Ignore),
@@ -249,6 +273,9 @@ public sealed partial class CalibrationDisplay : SwapChainPanel
             _d2dTargetBitmap = _d2dContext.CreateBitmapFromDxgiSurface(dxgiSurface, props);
             _d2dContext.Target = _d2dTargetBitmap;
             _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1, 1));
+
+            _visual.SetOffsetX(pos.X);
+            _visual.SetOffsetY(pos.Y);
         }
         catch (Exception ex)
         {
@@ -256,27 +283,22 @@ public sealed partial class CalibrationDisplay : SwapChainPanel
         }
 
         Render();
+        _dcompDevice.Commit();
     }
 
     private void Render()
     {
         try
         {
-            if (_isUnloading || _d2dContext == null || _swapChain == null || _brush == null)
+            if (_isUnloading || _d2dContext == null || _swapChain == null || _brush == null ||
+                pos.Width <= 0 || pos.Height <= 0)
                 return;
 
             _d2dContext.BeginDraw();
             _d2dContext.Clear(new Color4(0, 0, 0, 1));
 
-            float width = (float)ActualWidth;
-            float height = (float)ActualHeight;
-
-            // ActualWidth and ActualHeight can be 0 early in the app lifecycle.
-            if (width < 1 || height < 1)
-                return; // Skip frame
-
-            float cellWidth = width * 0.125f;
-            float cellHeight = height * 0.125f;
+            float cellWidth = pos.Width * 0.125f; // 1/8
+            float cellHeight = pos.Height * 0.125f;
             float lumaA, lumaB;
 
             if (HdrMode)

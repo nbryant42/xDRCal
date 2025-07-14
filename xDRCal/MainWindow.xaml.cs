@@ -4,7 +4,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using System;
-using System.Diagnostics;
+using Vortice.Mathematics;
+using Windows.Win32;
+using Windows.Win32.Foundation;
 using WinRT.Interop;
 using xDRCal.Controls;
 
@@ -15,13 +17,16 @@ namespace xDRCal;
 
 public sealed partial class MainWindow : Window
 {
-    private AppWindow appWindow;
+    private readonly AppWindow appWindow;
+    private readonly CalibrationDisplay calibrationView;
 
     public MainWindow()
     {
+        var hwnd = WindowNative.GetWindowHandle(this);
+        calibrationView = new CalibrationDisplay(hwnd);
+
         this.InitializeComponent();
 
-        var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         appWindow = AppWindow.GetFromWindowId(windowId);
 
@@ -52,7 +57,7 @@ public sealed partial class MainWindow : Window
     {
         if (HdrToggle.IsOn)
         {
-            CalibrationView.HdrMode = true;
+            calibrationView.HdrMode = true;
             SliderA.Maximum = 1023;
             SliderA.DisplayMode = SliderDisplayMode.Nits;
             SliderB.Maximum = 1023;
@@ -61,7 +66,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            CalibrationView.HdrMode = false;
+            calibrationView.HdrMode = false;
             SliderA.Maximum = 255;
             SliderA.DisplayMode = SliderDisplayMode.Hex;
             SliderB.Maximum = 255;
@@ -82,19 +87,24 @@ public sealed partial class MainWindow : Window
 
     private void UpdateCalibrationScale()
     {
-        var frac = SizeSlider.Value / 100.0;
-        var windowWidth = (int)RootGrid.ActualWidth;
-        var windowHeight = (int)RootGrid.ActualHeight;
-        var availableWidth = (int)BoundingGrid.ActualWidth;
-        var availableHeight = (int)BoundingGrid.ActualHeight;
-        var shortEdge = Math.Min(availableWidth, availableHeight);
-        var totalArea = windowWidth * windowHeight;
-        var targetArea = totalArea * frac;
+        // intermediate calculations in float32
+        uint dpi = PInvoke.GetDpiForWindow((HWND)WindowNative.GetWindowHandle(this));
+        float scale = dpi / 96.0f;
+
+        float frac = (float)SizeSlider.Value / 100.0f;
+        float windowWidth = Phys(scale, RootGrid.ActualWidth);
+        float windowHeight = Phys(scale, RootGrid.ActualHeight);
+        float availableWidth = Phys(scale, BoundingGrid.ActualWidth);
+        float availableHeight = Phys(scale, BoundingGrid.ActualHeight);
+        float shortEdge = Math.Min(availableWidth, availableHeight);
+        float totalArea = windowWidth * windowHeight;
+        float targetArea = totalArea * frac;
+
+        // final outputs as integers
         int width, height;
 
-        // Calculate the edge length if the display were square. Constrain to be a multiple of 8 to keep the pixel
-        // dimensions of the grid stable during resize, and reduce flicker
-        var square = (int)Math.Sqrt(targetArea) / 8 * 8;
+        // Calculate the edge length if the display were square.
+        int square = Round(MathF.Sqrt(targetArea));
 
         // Either the square fits inside the shorter edge, or we scale one dimension to match the desired area.
         if (square <= shortEdge)
@@ -103,25 +113,40 @@ public sealed partial class MainWindow : Window
         }
         else if (availableWidth > availableHeight)
         {
-            width = Math.Min((int)(targetArea / availableHeight), availableWidth) / 8 * 8;
-            height = availableHeight;
+            width = (int)Math.Min(Round(targetArea / availableHeight), availableWidth);
+            height = (int)availableHeight;
         }
         else
         {
-            width = windowWidth;
-            height = Math.Min((int)(targetArea / availableWidth), availableHeight) / 8 * 8;
+            width = (int)windowWidth;
+            height = (int)Math.Min(Round(targetArea / availableWidth), availableHeight);
         }
 
         if (width > 0 && height > 0)
         {
-            CalibrationView.Width = width;
-            CalibrationView.Height = height;
+            width = width / 2 * 2; // constrain to even width - keep center centered to avoid flicker
+            height = height / 2 * 2;
+
+            RectI pos = new(((int)availableWidth - width) / 2, ((int)availableHeight - height) / 2,
+                width, height);
+
+            calibrationView.Reposition(pos);
         }
+    }
+
+    private static int Round(float f)
+    {
+        return (int)MathF.Round(f);
+    }
+
+    private static float Phys(float scale, double dip)
+    {
+        return MathF.Round((float)dip * scale);
     }
 
     private void ValueSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
-        CalibrationView.LuminosityA = (short)SliderA.Value;
-        CalibrationView.LuminosityB = (short)SliderB.Value;
+        calibrationView.LuminosityA = (short)SliderA.Value;
+        calibrationView.LuminosityB = (short)SliderB.Value;
     }
 }

@@ -28,11 +28,15 @@
         </Grid.RowDefinitions>
 
         <Grid x:Name="BoundingGrid" Grid.Row="0" IsHitTestVisible="False">
+            <!-- Not an actual control anymore, this has been moved up to a DirectComposition layer on top of
+                 everything, but we still rely on the Grid setup to get the layout dimensions where it should go.
             <controls:CalibrationDisplay x:Name="CalibrationView"/>
+            -->
         </Grid>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Background="#FF171717" BorderThickness="4,4,4,0" CornerRadius="6" BorderBrush="#FF171717">
+        <StackPanel x:Name="Controls" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom" Background="#FF171717" BorderThickness="4,4,4,0" CornerRadius="6"
+                    BorderBrush="#FF171717">
                 
             <ToggleSwitch x:Name="FullscreenToggle"
                 Header="Fullscreen (F11)"
