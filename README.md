@@ -41,7 +41,8 @@ API that existed in UWP was removed from WinUI 3.
 WinUI 3 renders into a child window, but attempts to layer HDR below this will fail
 (it occupies the whole client area, and doesn't use
 [WS_EX_LAYERED](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles)). That's not the case in
-XAML Islands mode, but that mode has tradeoffs, at least in terms of packaging, deployment, and boilerplate.
+[XAML Islands](https://github.com/microsoft/WindowsAppSDK-Samples/tree/main/Samples/Islands) mode, but that mode has
+tradeoffs, at least in terms of packaging, deployment, and boilerplate.
 - **HDR swap-chains require a minimum size and refresh rate:**  
 DWM will downgrade HDR swap-chains to SDR if their size drops below a certain threshold (e.g., 274×274 px @ 96dpi), or
 if you present at less than ~24Hz.
