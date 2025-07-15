@@ -85,7 +85,7 @@ namespace xDRCal.Controls
             switch (DisplayMode)
             {
                 case SliderDisplayMode.Hex:
-                    ValueBox.Text = $"0x{value:X2}";
+                    ValueBox.Text = $"{value:X2}";
                     break;
 
                 case SliderDisplayMode.Percent:

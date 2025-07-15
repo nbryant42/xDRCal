@@ -15,7 +15,7 @@ using xDRCal.Controls;
 
 namespace xDRCal;
 
-public sealed partial class MainWindow : Window
+public sealed partial class MainWindow : Window, IDisposable
 {
     private readonly AppWindow appWindow;
     private readonly CalibrationDisplay calibrationView;
@@ -148,5 +148,10 @@ public sealed partial class MainWindow : Window
     {
         calibrationView.LuminosityA = (short)SliderA.Value;
         calibrationView.LuminosityB = (short)SliderB.Value;
+    }
+
+    public void Dispose()
+    {
+        calibrationView.Dispose();
     }
 }

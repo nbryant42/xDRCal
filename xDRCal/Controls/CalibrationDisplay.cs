@@ -77,9 +77,28 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
     public void Dispose()
     {
         _isUnloading = true;
-        // TODO release refs
+
         _renderTimer?.Stop();
         _renderTimer = null;
+
+        _d3dDevice?.Dispose();
+        _d3dDevice = null;
+        _swapChain?.Dispose();
+        _swapChain = null;
+        _d2dFactory?.Dispose();
+        _d2dFactory = null;
+        _d2dDevice?.Dispose();
+        _d2dDevice = null;
+        _d2dContext?.Dispose();
+        _d2dContext = null;
+        _brush?.Dispose();
+        _brush = null;
+        _d2dTargetBitmap?.Dispose();
+        _d2dTargetBitmap = null;
+        _dcompDevice?.Dispose();
+        _dcompDevice = null;
+        _visual?.Dispose();
+        _visual = null;
     }
 
     public void Reposition(RectI _pos)
@@ -229,6 +248,9 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
         return _swapChain.GetBuffer<ID3D11Texture2D>(0);
     }
 
+    // pixel size below which Windows clamps HDR swap-chains to SDR
+    private const int minSize = 274;
+
     private void ResizeRenderTarget()
     {
         if (_swapChain == null || _dcompDevice == null || _d2dContext == null || _visual == null)
@@ -248,18 +270,16 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
             _brush?.Dispose();
             _brush = null;
 
+            // Windows will downgrade small swap-chains to SDR. Work around by keeping a
+            // minimum size and drawing a dark grey border. (Transparency is unsupported.)
+            uint width = (uint)Math.Max(minSize, pos.Width);
+            uint height = (uint)Math.Max(minSize, pos.Height);
             var format = GetPixelFormat();
+            var hr = _swapChain.ResizeBuffers(2, width, height, format, SwapChainFlags.None);
 
-            var result = _swapChain.ResizeBuffers(
-                2,
-                (uint)Math.Max(pos.Width, 8),
-                (uint)Math.Max(pos.Height, 8),
-                format,
-                SwapChainFlags.None);
-
-            if (result.Failure)
+            if (hr.Failure)
             {
-                return;
+                throw new InvalidOperationException($"ResizeBuffers failed: {hr}");
             }
 
             using var backBuffer = GetBuffer();
@@ -272,10 +292,11 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
 
             _d2dTargetBitmap = _d2dContext.CreateBitmapFromDxgiSurface(dxgiSurface, props);
             _d2dContext.Target = _d2dTargetBitmap;
-            _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1, 1));
+            _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1));
 
-            _visual.SetOffsetX(pos.X);
-            _visual.SetOffsetY(pos.Y);
+            // adjust requested offset to account for our size workaround
+            _visual.SetOffsetX(Math.Max(0, pos.X - (width - pos.Width) / 2));
+            _visual.SetOffsetY(Math.Max(0, pos.Y - (height - pos.Height) / 2));
         }
         catch (Exception ex)
         {
@@ -295,8 +316,12 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
                 return;
 
             _d2dContext.BeginDraw();
-            _d2dContext.Clear(new Color4(0, 0, 0, 1));
 
+            // leave a border to account for our minSize workaround
+            var topBorder = Math.Max(0, (minSize - pos.Width) / 2);
+            var leftBorder = Math.Max(0, (minSize - pos.Height) / 2);
+
+            var grey = 23.0f / 255.0f; // = #171717 to match our XAML background
             float cellWidth = pos.Width * 0.125f; // 1/8
             float cellHeight = pos.Height * 0.125f;
             float lumaA, lumaB;
@@ -305,6 +330,7 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
             {
                 lumaA = Util.PQCodeToNits(LuminosityA) * 0.0125f; // 1/80 nits
                 lumaB = Util.PQCodeToNits(LuminosityB) * 0.0125f;
+                grey = Util.SrgbToLinear(grey);
             }
             else
             {
@@ -312,19 +338,21 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
                 lumaB = LuminosityB / 255.0f;
             }
 
+            _d2dContext.Clear(new Color4(grey, grey, grey));
+
             for (int row = 0; row < 8; row++)
             {
                 for (int col = 0; col < 8; col++)
                 {
                     bool isA = (row + col) % 2 == 0;
                     float luma = isA ? lumaA : lumaB;
-                    _brush.Color = new Color4(luma, luma, luma, 1);
+                    _brush.Color = new Color4(luma, luma, luma);
 
                     var rect = new Rect(
-                        col * cellWidth,
-                        row * cellHeight,
-                        (col + 1) * cellWidth,
-                        (row + 1) * cellHeight);
+                        leftBorder + col * cellWidth,
+                        topBorder + row * cellHeight,
+                        cellWidth + 1,
+                        cellHeight + 1);
 
                     _d2dContext.FillRectangle(rect, _brush);
                 }
