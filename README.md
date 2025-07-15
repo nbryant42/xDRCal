@@ -97,5 +97,5 @@ panels cannot reproduce, and 01 would be indistinguishable from black). Thus, mo
 somewhere in between Gamma 2.2 and sRGB, at the low end of the curve.
 
 Opinions differ on whether sRGB or Gamma 2.2 is "best," and there is no One True Way. Some content was mastered to 2.2,
-other content to sRGB, and it's anyone's guess which is which. For a workaround to change your Windows behavior in SDR
+other content to sRGB, and it's anyone's guess which is which. For a workaround to change your Windows behavior in HDR
 mode, see https://github.com/dylanraga/win11hdr-srgb-to-gamma2.2-icm
