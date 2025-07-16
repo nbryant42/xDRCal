@@ -12,7 +12,7 @@ As of Windows 11 24H2, Windows and WinUI 3 both have a number of platform limita
 particular.
 
 - **Don't use [ResizeBuffers](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers)
-on a visible swap-chain**:  
+on a visible swap-chain:**  
 This creates resize flicker. DirectComposition helps by batching changes atomically when you call
 [Commit](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice2-commit), but this is
 not synchronized with
@@ -21,6 +21,9 @@ resized swap-chain, `Present` it, and give that a bit of time to complete before
 calling `Commit`. There are still some unavoidable race conditions in this, but it eliminates most resize flicker.
 (There is no public way to know when `Present` has actually completed and ready to `Commit`, which is the core source
 of unavoidable flicker.)
+- **Consider calling `Present` multiple times on resize:**  
+In this app, calling my `Render()` function 3 times (for a 2-buffer swap-chain) reduces resize flicker to almost zero.
+The 3rd `Present` is more likely to block, helping to guarantee the swapchain is ready to pass to `Commit`.
 - **Consider avoiding [SwapChainPanel](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.swapchainpanel):**  
 `SwapChainPanel` can be hard to synchronize with XAML layout, and layering UI over `SwapChainPanel` is unreliable because
 it presents directly to the window surface. See also
@@ -37,7 +40,7 @@ mouse pointer style.
 - **Transparency not supported for HDR surfaces:**  
 As soon as you set an alpha mode other than Ignore, an HDR surface either returns invalid parameter or clamps to SDR.
 So you cannot "punch holes in it" via transparency for controls layered below to show through.
-- **Not possible to get layered surfaces via custom SpriteVisual**:  
+- **Not possible to get layered surfaces via custom SpriteVisual:**  
 [ICompositionDrawingSurfaceInterop::BeginDraw](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/win32/microsoft.ui.composition.interop/nf-microsoft-ui-composition-interop-icompositiondrawingsurfaceinterop-begindraw)
 is unsupported, unlike UWP (access is blocked), and the
 [CreateCompositionSurfaceForSwapChain](https://learn.microsoft.com/en-us/windows/win32/api/windows.ui.composition.interop/nn-windows-ui-composition-interop-icompositorinterop)
