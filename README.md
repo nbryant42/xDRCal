@@ -8,7 +8,7 @@ I mainly built this as an exploratory project to test out Direct2D HDR compositi
 
 ## Developer Notes
 
-As of Windows 11 24H4, Windows and WinUI 3 both have a number of platform limitations related to swap chains in general and HDR surfaces in
+As of Windows 11 24H2, Windows and WinUI 3 both have a number of platform limitations related to swap chains in general and HDR surfaces in
 particular.
 
 - **Don't use [ResizeBuffers](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers)
@@ -49,7 +49,7 @@ WinUI 3 renders into a child window, but attempts to layer HDR below this will f
 [XAML Islands](https://github.com/microsoft/WindowsAppSDK-Samples/tree/main/Samples/Islands) mode, but that mode has
 tradeoffs, at least in terms of packaging, deployment, and boilerplate.
 - **HDR swap-chains require a minimum size and refresh rate:**  
-DWM will downgrade HDR swap-chains to SDR if their size drops below a certain threshold (e.g., 274×274 px @ 96dpi), or
+DWM will downgrade HDR swap-chains to SDR if their size drops below a certain threshold (e.g., 274 274 px @ 96dpi), or
 if you present at less than ~24Hz.
 
 ## Installation
