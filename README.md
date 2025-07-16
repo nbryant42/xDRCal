@@ -6,29 +6,34 @@ This is a small .NET application to help check the black or white luminosity cli
 
 I mainly built this as an exploratory project to test out Direct2D HDR composition in a WinUI 3 setting.
 
-## Lessons learned (for developers)
+## Developer Notes
 
-Windows and WinUI 3 both have a number of platform limitations related to swap chains in general and HDR surfaces in
+As of Windows 11 24H4, Windows and WinUI 3 both have a number of platform limitations related to swap chains in general and HDR surfaces in
 particular.
 
-- **Avoid `SwapChainPanel`:**  
-Most projects probably should stay away from
-[SwapChainPanel](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.swapchainpanel)
-due to resize flicker, and should not attempt to layer any controls on top of a swap-chain surface; SwapChainPanel uses
-a swap-chain attached directly to a XAML child window’s surface, and because XAML manages composition in a mostly SDR
-(8-bit) pipeline, any overlapping HDR content or overlying UI are not guaranteed to survive a full composition pass.
-- **Use legacy DirectComposition (DComp) for HDR surfaces as overlays:**  
-For most use cases, the best way for a
-WinUI 3 application to present an HDR surface is probably as an overlay via
-[legacy DComp](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondesktopdevice-createsurfacefromhwnd),
-which suffers less from resize flicker. There seems to be no clean way to synchronize SwapChainPanel with layout changes
-in the XAML tree; the two will always disagree for at least 1 frame. DComp is theoretically designed to support such	
-atomicity. In practice it's not perfect, but it does seem smoother, i.e., at least it does the right thing *sometimes*.
+- **Don't use [ResizeBuffers](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers)
+on a visible swap-chain**:  
+This creates resize flicker. DirectComposition helps by batching changes atomically when you call
+[Commit](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice2-commit), but this is
+not synchronized with
+[Present](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-present), so build a new
+resized swap-chain, `Present` it, and give that a bit of time to complete before switching the visual to use it and
+calling `Commit`. There are still some unavoidable race conditions in this, but it eliminates most resize flicker.
+(There is no public way to know when `Present` has actually completed and ready to `Commit`, which is the core source
+of unavoidable flicker.)
+- **Consider avoiding [SwapChainPanel](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.swapchainpanel):**  
+`SwapChainPanel` can be hard to synchronize with XAML layout, and layering UI over `SwapChainPanel` is unreliable because
+it presents directly to the window surface. See also
+[#6919](https://github.com/microsoft/microsoft-ui-xaml/issues/6919).
+Would the two-swap-chain trick have worked with `SwapChainPanel`? I'm not sure, but it seems better to have direct
+control over `Commit`.
+- **Use classic DirectComposition (DComp) for HDR surfaces as overlays:**  
+Any `SwapChainPanel` issues can be sidestepped by presenting via
+[classic DComp](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondesktopdevice-createsurfacefromhwnd).
 - **Input/event caveats for overlays:**  
-If you overlay an HWND or DComp visual above your UI, ensure you handle input correctly (e.g., by punching a transparent
+If you overlay an `HWND` or DComp visual above your UI, ensure you handle input correctly (e.g., by punching a transparent
 hole in the overlay), or input may not reach your controls. Even opaque DComp overlays may require manually setting the
-mouse pointer style. (I'm just ignoring that problem for now, as it does not always occur and has no impact on
-functionality.)
+mouse pointer style.
 - **Transparency not supported for HDR surfaces:**  
 As soon as you set an alpha mode other than Ignore, an HDR surface either returns invalid parameter or clamps to SDR.
 So you cannot "punch holes in it" via transparency for controls layered below to show through.
@@ -37,7 +42,7 @@ So you cannot "punch holes in it" via transparency for controls layered below to
 is unsupported, unlike UWP (access is blocked), and the
 [CreateCompositionSurfaceForSwapChain](https://learn.microsoft.com/en-us/windows/win32/api/windows.ui.composition.interop/nn-windows-ui-composition-interop-icompositorinterop)
 API that existed in UWP was removed from WinUI 3.
-- **Not possible to get layered surfaces via child HWND (without XAML Islands):**  
+- **Not possible to get layered surfaces via child `HWND` (without XAML Islands):**  
 WinUI 3 renders into a child window, but attempts to layer HDR below this will fail
 (it occupies the whole client area, and doesn't use
 [WS_EX_LAYERED](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles)). That's not the case in
@@ -56,7 +61,7 @@ it.
 
 ## Building
 
-You'll need to install Visual Studio and the relevant workloads.
+Install Visual Studio and the relevant workloads.
 
 See here: https://learn.microsoft.com/en-us/windows/apps/get-started/start-here?tabs=vs-2022-17-10
 

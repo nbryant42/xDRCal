@@ -4,6 +4,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Vortice.DCommon;
 using Vortice.Direct2D1;
 using Vortice.Direct3D;
@@ -14,9 +15,10 @@ using Vortice.Mathematics;
 
 namespace xDRCal.Controls;
 
-public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
+public sealed partial class CalibrationDisplay : IDisposable
 {
     private ID3D11Device? _d3dDevice;
+    private IDXGIFactory2? _dxgiFactory;
     private IDXGISwapChain1? _swapChain;
 
     private ID2D1Factory1? _d2dFactory;
@@ -56,7 +58,10 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
         set
         {
             hdrMode = value;
+#pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+            // fire-and-forget should be fine here.
             ResizeRenderTarget();
+#pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
         }
     }
 
@@ -64,14 +69,11 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
     private bool _isUnloading = false;
 
     private RectI pos;
-    private readonly IntPtr hwnd = _hwnd;
 
-    public void Init()
+    public CalibrationDisplay(IntPtr hwnd)
     {
-        if (_swapChain == null && pos.Width > 0 && pos.Height > 0)
-        {
-            InitializeDirectX();
-        }
+        this.hwnd = hwnd;
+        InitializeDirectX();
     }
 
     public void Dispose()
@@ -99,6 +101,8 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
         _dcompDevice = null;
         _visual?.Dispose();
         _visual = null;
+        _dxgiFactory?.Dispose();
+        _dxgiFactory = null;
     }
 
     public void Reposition(RectI _pos)
@@ -107,18 +111,14 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
         {
             pos = _pos;
 
-            if (_swapChain == null)
-            {
-                InitializeDirectX();
-            }
-            else
-            {
-                ResizeRenderTarget();
-            }
+#pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+            // fire-and-forget should be fine here.
+            ResizeRenderTarget();
+#pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
         }
     }
 
-    // Must call Render() at least 24Hz to prevent DComp from downgrading the output to SDR.
+    // Must call Render() at >=24Hz to prevent DComp from downgrading the output to SDR.
     // This also happens in SwapChainPanel; apparently a well-known quirk of Windows
     // (implemented for power conservation, etc)
     private void StartRenderLoop()
@@ -155,7 +155,8 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
 #pragma warning restore CS8603 // Possible null reference return.
     }
 
-    private unsafe static Result DCompositionCreateDevice3(IUnknown renderingDevice, Guid iid, out nint dcompositionDevice)
+    private unsafe static Result DCompositionCreateDevice3(IUnknown renderingDevice, Guid iid,
+        out nint dcompositionDevice)
     {
         _ = IntPtr.Zero;
         nint renderingDevice2 = MarshallingHelpers.ToCallbackPtr<IUnknown>(renderingDevice);
@@ -170,33 +171,17 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
         return result;
     }
 
-    [DllImport("dcomp.dll", CallingConvention = CallingConvention.StdCall, EntryPoint = "DCompositionCreateDevice3")]
-    private unsafe static extern int DCompositionCreateDevice3_(void* _renderingDevice, void* _iid,
+    [LibraryImport("dcomp.dll", EntryPoint = "DCompositionCreateDevice3")]
+    [UnmanagedCallConv(CallConvs = new Type[] { typeof(System.Runtime.CompilerServices.CallConvStdcall) })]
+    internal static unsafe partial int DCompositionCreateDevice3_(void* _renderingDevice, void* _iid,
         void* _dcompositionDevice);
 
-    private void InitializeDirectX()
+    private async void InitializeDirectX()
     {
         try
         {
             _d3dDevice = CreateD3DDevice();
-
-            using var dxgiFactory = GetFactory();
-
-            var swapDesc = new SwapChainDescription1
-            {
-                Format = GetPixelFormat(),
-                Width = (uint)Math.Max(pos.Width, 8),
-                Height = (uint)Math.Max(pos.Height, 8),
-                BufferCount = 2,
-                SampleDescription = new SampleDescription(1, 0),
-                BufferUsage = Usage.RenderTargetOutput,
-                SwapEffect = SwapEffect.FlipDiscard,
-                Scaling = Scaling.Stretch,
-                AlphaMode = Vortice.DXGI.AlphaMode.Ignore
-            };
-
-            _swapChain = dxgiFactory.CreateSwapChainForComposition(_d3dDevice, swapDesc);
-
+            _dxgiFactory = GetFactory();
             _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(FactoryType.SingleThreaded);
             using IDXGIDevice dxgiDevice = _d3dDevice.QueryInterface<IDXGIDevice>();
             _d2dDevice = _d2dFactory.CreateDevice(dxgiDevice);
@@ -207,11 +192,10 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
             var dcompTarget = _dcompDevice.CreateSurfaceFromHwnd(hwnd, true);
 
             _visual = _dcompDevice.CreateVisual();
-            _visual.SetContent(_swapChain);
 
             dcompTarget.SetRoot(_visual);
 
-            ResizeRenderTarget();
+            await ResizeRenderTarget();
             StartRenderLoop();
         }
         catch (Exception ex)
@@ -250,37 +234,53 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
 
     // pixel size below which Windows clamps HDR swap-chains to SDR
     private const int minSize = 274;
+    private readonly nint hwnd;
 
-    private void ResizeRenderTarget()
+    private async Task ResizeRenderTarget()
     {
-        if (_swapChain == null || _dcompDevice == null || _d2dContext == null || _visual == null)
+        if (_dcompDevice == null || _d2dContext == null || _visual == null || _dxgiFactory == null)
         {
             return;
         }
 
+        // We'll release old target etc after resizing.
+        var oldTarget = _d2dContext.Target;
+        var oldTargetBitmap = _d2dTargetBitmap;
+        var oldBrush = _brush;
+        var oldSwapChain = _swapChain;
+
+        // Windows will downgrade small swap-chains to SDR. Work around by keeping a
+        // minimum size and drawing a dark grey border. (Transparency is unsupported.)
+        uint width = (uint)Math.Max(minSize, pos.Width);
+        uint height = (uint)Math.Max(minSize, pos.Height);
+
         try
         {
-            // Release old target before resizing
-            _d2dContext.Target?.Dispose();
-            _d2dContext.Target = null;
-
-            _d2dTargetBitmap?.Dispose();
-            _d2dTargetBitmap = null;
-
-            _brush?.Dispose();
-            _brush = null;
-
-            // Windows will downgrade small swap-chains to SDR. Work around by keeping a
-            // minimum size and drawing a dark grey border. (Transparency is unsupported.)
-            uint width = (uint)Math.Max(minSize, pos.Width);
-            uint height = (uint)Math.Max(minSize, pos.Height);
             var format = GetPixelFormat();
-            var hr = _swapChain.ResizeBuffers(2, width, height, format, SwapChainFlags.None);
 
-            if (hr.Failure)
+            var swapDesc = new SwapChainDescription1
             {
-                throw new InvalidOperationException($"ResizeBuffers failed: {hr}");
-            }
+                Format = format,
+                Width = width,
+                Height = height,
+                BufferCount = 2,
+                SampleDescription = new SampleDescription(1, 0),
+                BufferUsage = Usage.RenderTargetOutput,
+                SwapEffect = SwapEffect.FlipDiscard,
+                Scaling = Scaling.Stretch,
+                AlphaMode = Vortice.DXGI.AlphaMode.Ignore
+            };
+
+            // Swap the, uhh... what are we doing? Swap the swap chain. Yeah, that's the ticket.
+            //
+            // Seriously, we do it this way for atomicity, to avoid flicker. Swap-chains present directly to the device,
+            // and are not synchronized with the DComp visual tree. But we can atomically* .Commit() updates
+            // to the visual tree if it's pointing to a *new swap-chain*.
+            //
+            // * (There are still some caveats and unavoidable races, leading to black-frame flicker, but this mostly
+            //    works.)
+            oldSwapChain = _swapChain;
+            _swapChain = _dxgiFactory.CreateSwapChainForComposition(_d3dDevice, swapDesc);
 
             using var backBuffer = GetBuffer();
             using var dxgiSurface = backBuffer.QueryInterface<IDXGISurface>();
@@ -293,10 +293,6 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
             _d2dTargetBitmap = _d2dContext.CreateBitmapFromDxgiSurface(dxgiSurface, props);
             _d2dContext.Target = _d2dTargetBitmap;
             _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1));
-
-            // adjust requested offset to account for our size workaround
-            _visual.SetOffsetX(Math.Max(0, pos.X - (width - pos.Width) / 2));
-            _visual.SetOffsetY(Math.Max(0, pos.Y - (height - pos.Height) / 2));
         }
         catch (Exception ex)
         {
@@ -304,7 +300,26 @@ public sealed class CalibrationDisplay(IntPtr _hwnd) : IDisposable
         }
 
         Render();
-        _dcompDevice.Commit();
+
+        // defer the DComp commit a bit to give the Present time to do its work (async; doesn't block the event loop).
+        await Task.Yield();
+
+        try
+        {
+            // adjust requested offset to account for our size workaround
+            _visual.SetOffsetX(Math.Max(0, pos.X - (width - pos.Width) / 2));
+            _visual.SetOffsetY(Math.Max(0, pos.Y - (height - pos.Height) / 2));
+            _visual.SetContent(_swapChain);
+            _dcompDevice.Commit();
+        }
+        catch (Exception ex) { Debug.WriteLine(ex.ToString()); }
+
+        // idk, to me it seems safer to defer this 'till the next UI tick:
+        await Task.Yield();
+        oldTarget?.Dispose();
+        oldTargetBitmap?.Dispose();
+        oldBrush?.Dispose();
+        oldSwapChain?.Dispose();
     }
 
     private void Render()
