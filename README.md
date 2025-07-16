@@ -13,9 +13,9 @@ particular.
 
 - **Don't use [ResizeBuffers](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers)
 on a visible swap-chain:**  
-This creates resize flicker. DirectComposition helps by batching changes atomically when you call
-[Commit](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice2-commit), but this is
-not synchronized with
+This creates resize flicker, at least if you're also centering. DirectComposition helps by batching changes atomically
+when you call [Commit](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice2-commit),
+but this is not synchronized with
 [Present](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-present), so build a new
 resized swap-chain, `Present` it, and give that a bit of time to complete before switching the visual to use it and
 calling `Commit`. There are still some unavoidable race conditions in this, but it eliminates most resize flicker.
