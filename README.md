@@ -49,7 +49,7 @@ WinUI 3 renders into a child window, but attempts to layer HDR below this will f
 [XAML Islands](https://github.com/microsoft/WindowsAppSDK-Samples/tree/main/Samples/Islands) mode, but that mode has
 tradeoffs, at least in terms of packaging, deployment, and boilerplate.
 - **HDR swap-chains require a minimum size and refresh rate:**  
-DWM will downgrade HDR swap-chains to SDR if their size drops below a certain threshold (e.g., 274 274 px @ 96dpi), or
+DWM will downgrade HDR swap-chains to SDR if their size drops below a certain threshold (e.g., 274x274 px @ 96dpi), or
 if you present at less than ~24Hz.
 
 ## Installation
