@@ -297,11 +297,18 @@ public sealed partial class CalibrationDisplay : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine(ex.ToString());
+            return;
         }
 
-        Render();
+        // get buffer count (Windows may override our request)
+        var count = _swapChain.Description1.BufferCount;
+        // if 2 buffers, render 3X; third is more likely to block, helping with .Commit() sync.
+        for (var i = 0; i <= count; i++)
+        {
+            Render();
+        }
 
-        // defer the DComp commit a bit to give the Present time to do its work (async; doesn't block the event loop).
+        // defer the DComp commit a bit more to give the Present time to do its work (async)
         await Task.Yield();
 
         try
@@ -312,7 +319,11 @@ public sealed partial class CalibrationDisplay : IDisposable
             _visual.SetContent(_swapChain);
             _dcompDevice.Commit();
         }
-        catch (Exception ex) { Debug.WriteLine(ex.ToString()); }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex.ToString());
+            return;
+        }
 
         // idk, to me it seems safer to defer this 'till the next UI tick:
         await Task.Yield();
