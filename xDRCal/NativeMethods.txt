@@ -1,1 +1,5 @@
 ﻿GetDpiForWindow
+SetWindowLongPtr
+SetCursor
+LoadCursor
+CallWindowProc

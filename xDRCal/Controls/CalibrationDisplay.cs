@@ -4,6 +4,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using Vortice.DCommon;
 using Vortice.Direct2D1;
@@ -12,6 +13,9 @@ using Vortice.Direct3D11;
 using Vortice.DirectComposition;
 using Vortice.DXGI;
 using Vortice.Mathematics;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace xDRCal.Controls;
 
@@ -70,10 +74,61 @@ public sealed partial class CalibrationDisplay : IDisposable
 
     private RectI pos;
 
-    public CalibrationDisplay(IntPtr hwnd)
+    private readonly nint prevWndProc;
+    private readonly WndProcDelegate wndProcDelegate;
+    private readonly GCHandle _gcHandle;
+
+    private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, WPARAM wParam, LPARAM lParam);
+
+    public CalibrationDisplay(IntPtr _hwnd)
     {
-        this.hwnd = hwnd;
+        hwnd = (HWND)_hwnd;
         InitializeDirectX();
+
+        wndProcDelegate = CustomWndProc;
+        // Pin delegate so it doesn't get GC'd
+        _gcHandle = GCHandle.Alloc(wndProcDelegate);
+        prevWndProc = PInvoke.SetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC,
+            Marshal.GetFunctionPointerForDelegate(wndProcDelegate));
+    }
+
+    private IntPtr CustomWndProc(IntPtr hWnd, uint msg, WPARAM wParam, LPARAM lParam)
+    {
+        const ushort HTCLIENT = 1;
+        const uint WM_SETCURSOR = 0x0020;
+        var IDC_ARROW = MAKEINTRESOURCE(32512);
+
+        switch (msg)
+        {
+            case WM_SETCURSOR:
+                if (msg == WM_SETCURSOR && (HWND)(nuint)wParam != hwnd && LOWORD(lParam) == HTCLIENT)
+                {
+                    // wParam != hwnd --> "fake" HWND, not a real window. So it's the DComp overlay.
+                    var hCursor = LoadCursor(default, IDC_ARROW);
+                    PInvoke.SetCursor(hCursor);
+                    return 1;
+                }
+                break;
+        }
+
+        // Call previous/original WndProc for everything else!
+        return CallWindowProc(prevWndProc, hwnd, msg, wParam, lParam);
+    }
+
+    private static ushort LOWORD(LPARAM dword) => (ushort)(dword & 0xffff);
+
+    [DllImport("USER32.dll", ExactSpelling = true, EntryPoint = "LoadCursorW", SetLastError = true),
+        DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [SupportedOSPlatform("windows5.0")]
+    private static extern HCURSOR LoadCursor(HINSTANCE hInstance, PCWSTR lpCursorName);
+
+    [DllImport("USER32.dll", ExactSpelling = true, EntryPoint = "CallWindowProcW"), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [SupportedOSPlatform("windows5.0")]
+    private static extern LRESULT CallWindowProc(nint lpPrevWndFunc, HWND hWnd, uint Msg, WPARAM wParam, LPARAM lParam);
+
+    private static unsafe PCWSTR MAKEINTRESOURCE(ushort i)
+    {
+        return new PCWSTR((char*)((i)));
     }
 
     public void Dispose()
@@ -103,6 +158,13 @@ public sealed partial class CalibrationDisplay : IDisposable
         _visual = null;
         _dxgiFactory?.Dispose();
         _dxgiFactory = null;
+
+        // Restore original wndproc
+        if (prevWndProc != IntPtr.Zero)
+        {
+            PInvoke.SetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, prevWndProc);
+        }
+        _gcHandle.Free();
     }
 
     public void Reposition(RectI _pos)
@@ -234,7 +296,7 @@ public sealed partial class CalibrationDisplay : IDisposable
 
     // pixel size below which Windows clamps HDR swap-chains to SDR
     private const int minSize = 274;
-    private readonly nint hwnd;
+    private readonly HWND hwnd;
 
     private async Task ResizeRenderTarget()
     {
