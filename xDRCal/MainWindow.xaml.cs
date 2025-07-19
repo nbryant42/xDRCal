@@ -9,6 +9,7 @@ using Windows.Win32;
 using Windows.Win32.Foundation;
 using WinRT.Interop;
 using xDRCal.Controls;
+using xDRCal.Visuals;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -18,19 +19,18 @@ namespace xDRCal;
 public sealed partial class MainWindow : Window, IDisposable
 {
     private readonly AppWindow appWindow;
-    private readonly CalibrationDisplay calibrationView;
 
     public MainWindow()
     {
-        var hwnd = WindowNative.GetWindowHandle(this);
-        calibrationView = new CalibrationDisplay(hwnd);
-
         this.InitializeComponent();
 
+        var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         appWindow = AppWindow.GetFromWindowId(windowId);
 
-        RootGrid.SizeChanged += (_, _) => UpdateCalibrationScale();
+        RootGrid.SizeChanged += (_, _) => { UpdateCalibrationScale(); PositionLRButtons(); };
+
+        CalibrationView.Initialize(hwnd);
     }
 
     private void FullscreenAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -57,7 +57,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (HdrToggle.IsOn)
         {
-            calibrationView.HdrMode = true;
+            if (CalibrationView.OverlaySurface != null)
+                CalibrationView.OverlaySurface.HdrMode = true;
             SliderA.Maximum = 1023;
             SliderA.DisplayMode = SliderDisplayMode.Nits;
             SliderB.Maximum = 1023;
@@ -66,7 +67,8 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         else
         {
-            calibrationView.HdrMode = false;
+            if (CalibrationView.OverlaySurface != null)
+                CalibrationView.OverlaySurface.HdrMode = false;
             SliderA.Maximum = 255;
             SliderA.DisplayMode = SliderDisplayMode.Hex;
             SliderB.Maximum = 255;
@@ -78,6 +80,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void Window_SizeChanged(object sender, WindowSizeChangedEventArgs e)
     {
         UpdateCalibrationScale();
+        PositionLRButtons();
     }
 
     private void SizeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -85,17 +88,37 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateCalibrationScale();
     }
 
+    private void PositionLRButtons()
+    {
+        // intermediate calculations in float
+        uint dpi = PInvoke.GetDpiForWindow((HWND)WindowNative.GetWindowHandle(this));
+        float scale = dpi / 96.0f;
+        float availableWidth = (int)Phys(scale, CalibrationView.ActualWidth);
+        float availableHeight = (int)Phys(scale, CalibrationView.ActualHeight);
+
+        // final outputs as integers
+        int size = (int)Phys(scale, 24.0);
+        int offset = (int)Phys(scale, 16.0);
+        int y = (int)MathF.Round(0.5f * (availableHeight - size));
+
+        RectI pos1 = new(offset, y, size, size);
+        RectI pos2 = new((int)MathF.Round(availableWidth - size - offset), y, size, size);
+
+        CalibrationView.LeftBtnSurface?.Reposition(pos1);
+        CalibrationView.RightBtnSurface?.Reposition(pos2);
+    }
+
     private void UpdateCalibrationScale()
     {
-        // intermediate calculations in float32
+        // intermediate calculations in float
         uint dpi = PInvoke.GetDpiForWindow((HWND)WindowNative.GetWindowHandle(this));
         float scale = dpi / 96.0f;
 
         float frac = (float)SizeSlider.Value / 100.0f;
         float windowWidth = Phys(scale, RootGrid.ActualWidth);
         float windowHeight = Phys(scale, RootGrid.ActualHeight);
-        float availableWidth = Phys(scale, BoundingGrid.ActualWidth);
-        float availableHeight = Phys(scale, BoundingGrid.ActualHeight);
+        float availableWidth = Phys(scale, CalibrationView.ActualWidth);
+        float availableHeight = Phys(scale, CalibrationView.ActualHeight);
         float shortEdge = Math.Min(availableWidth, availableHeight);
         float totalArea = windowWidth * windowHeight;
         float targetArea = totalArea * frac;
@@ -127,10 +150,16 @@ public sealed partial class MainWindow : Window, IDisposable
             width = width / 2 * 2; // constrain to even width - keep center centered to avoid flicker
             height = height / 2 * 2;
 
-            RectI pos = new(((int)availableWidth - width) / 2, ((int)availableHeight - height) / 2,
-                width, height);
+            int x = ((int)availableWidth - width) / 2;
+            int y = ((int)availableHeight - height) / 2;
 
-            calibrationView.Reposition(pos);
+            // add a border as workaround for Windows SDR clamping behavior
+            x -= Math.Max(0, Surface.MIN_SIZE - width) / 2;
+            y -= Math.Max(0, Surface.MIN_SIZE - height) / 2;
+
+            RectI pos = new(x, y, Math.Max(width, Surface.MIN_SIZE), Math.Max(height, Surface.MIN_SIZE));
+
+            CalibrationView.OverlaySurface?.Reposition(pos);
         }
     }
 
@@ -146,12 +175,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void ValueSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
-        calibrationView.LuminosityA = (short)SliderA.Value;
-        calibrationView.LuminosityB = (short)SliderB.Value;
+        CalibrationView.LuminosityA = (short)SliderA.Value;
+        CalibrationView.LuminosityB = (short)SliderB.Value;
     }
 
     public void Dispose()
     {
-        calibrationView.Dispose();
+        CalibrationView.Dispose();
     }
 }
