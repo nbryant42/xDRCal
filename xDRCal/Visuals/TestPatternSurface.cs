@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using Vortice.DirectComposition;
@@ -10,12 +11,14 @@ namespace xDRCal.Visuals;
 
 public partial class TestPatternSurface : Surface
 {
-    private short luminosityA, luminosityB;
-
     public TestPatternSurface(IDCompositionVisual2? _parentVisual, CalibrationDisplay host) :
         base(_parentVisual, host)
     {
+        Pages = [DrawChessboard, DrawGammaRamp];
     }
+
+    public int Page { get; set; }
+    public List<Action<float, float>> Pages { get; }
 
     public override void Render()
     {
@@ -27,6 +30,7 @@ public partial class TestPatternSurface : Surface
                 pos.Width <= 0 || pos.Height <= 0)
                 return;
 
+            _d2dContext.Target = _d2dTargetBitmap;
             _d2dContext.BeginDraw();
 
             // leave a border to account for our minSize workaround
@@ -51,7 +55,7 @@ public partial class TestPatternSurface : Surface
             _d2dContext.Clear(new Color4(grey, grey, grey));
             _d2dContext.Transform = Matrix3x2.CreateTranslation(leftBorder, topBorder);
 
-            DrawChessboard(lumaA, lumaB);
+            Pages[Page].Invoke(lumaA, lumaB);
 
             _d2dContext.EndDraw();
             _swapChain.Present(1, PresentFlags.None);
@@ -84,6 +88,26 @@ public partial class TestPatternSurface : Surface
 
                 _d2dContext.FillRectangle(rect, _brush);
             }
+        }
+    }
+
+    private void DrawGammaRamp(float lumaA, float lumaB)
+    {
+        if (_d2dContext == null || _brush == null)
+        {
+            throw new InvalidOperationException("missing reference");
+        }
+
+        float cellWidth = pos.Width * 0.0625f; // 1/16
+
+        for (int col = 0; col < 16; col++)
+        {
+            float luma = lumaA + (lumaB - lumaA) * col / 15.0f;
+            _brush.Color = new Color4(luma, luma, luma);
+
+            var rect = new Rect(col * cellWidth, 0, cellWidth + 1, pos.Height + 1);
+
+            _d2dContext.FillRectangle(rect, _brush);
         }
     }
 }

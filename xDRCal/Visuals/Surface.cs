@@ -48,7 +48,7 @@ public abstract partial class Surface : IDisposable
     protected IDXGISwapChain1? _swapChain;
     private IDCompositionVisual2? _visual;
     protected ID2D1SolidColorBrush? _brush;
-    private ID2D1Bitmap1? _d2dTargetBitmap;
+    protected ID2D1Bitmap1? _d2dTargetBitmap;
 
     public Surface(IDCompositionVisual2? _parentVisual, ISurfaceHost host, bool insertAbove = true,
         Surface? referenceSurface = null)
@@ -171,7 +171,6 @@ public abstract partial class Surface : IDisposable
                 BitmapOptions.Target | BitmapOptions.CannotDraw);
 
             _d2dTargetBitmap = _d2dContext.CreateBitmapFromDxgiSurface(dxgiSurface, props);
-            _d2dContext.Target = _d2dTargetBitmap;
             _brush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1));
         }
         catch (Exception ex)
@@ -233,12 +232,13 @@ public abstract partial class Surface : IDisposable
 
     public bool HitTest(int x, int y)
     {
-        bool v = pos.Contains(x, y);
-        Debug.WriteLine($"Hit test on {this}; pos {pos}; x={x}; y={y}; result={v}");
-        return v;
+        return pos.Contains(x, y);
     }
 
-    public void Clicked()
+    /// <summary>
+    /// Default implementation does nothing.
+    /// </summary>
+    public virtual void Clicked()
     {
     }
 }

@@ -5,6 +5,7 @@ using Vortice.Direct2D1;
 using Vortice.DirectComposition;
 using Vortice.DXGI;
 using Vortice.Mathematics;
+using xDRCal.Controls;
 
 namespace xDRCal.Visuals;
 
@@ -27,6 +28,7 @@ public partial class NavBtnSurface : Surface
                 pos.Width <= 0 || pos.Height <= 0)
                 return;
 
+            _d2dContext.Target = _d2dTargetBitmap;
             _d2dContext.BeginDraw();
             _d2dContext.Clear(new Color4(0, 0, 0, 0));
 
@@ -99,4 +101,15 @@ public partial class NavBtnSurface : Surface
         _d2dContext.FillGeometry(combined, _brush);
     }
 
+    public override void Clicked()
+    {
+        if (isRight)
+        {
+            ((CalibrationDisplay)host).FlipRight();
+        } else
+        {
+            ((CalibrationDisplay)host).FlipLeft();
+
+        }
+    }
 }

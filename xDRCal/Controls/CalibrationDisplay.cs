@@ -1,13 +1,12 @@
 ﻿using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using SharpGen.Runtime;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Vortice.Direct2D1;
@@ -39,7 +38,7 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     private IDCompositionVisual2? _rootVisual;
     private TestPatternSurface? _testPatternSurface;
     private NavBtnSurface? _leftBtnSurface, _rightBtnSurface;
-    private readonly List<Surface> _surfaces = [];
+    private List<Surface> _surfaces = [];
     private DispatcherQueueTimer? _renderTimer;
 
     public bool IsUnloading { get; set; }
@@ -56,7 +55,6 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     {
         Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
         IsHitTestVisible = true;
-        PointerReleased += OnPointerReleased;
     }
 
     /// <summary>
@@ -65,10 +63,10 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     /// (2) Setup DirectX etc.
     /// MainWindow is responsible for calling this on initialization.
     /// </summary>
-    /// <param name="_hwnd">Native Win32 HWND for the root app window.</param>
-    public void Initialize(IntPtr _hwnd)
+    /// <param name="parentHwnd">Native Win32 HWND for the root app window.</param>
+    public void Initialize(IntPtr parentHwnd)
     {
-        this.hwnd = (HWND)_hwnd;
+        this.hwnd = FindXamlChild((HWND)parentHwnd);
         wndProcDelegate = CustomWndProc;
         prevWndProc = PInvoke.SetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC,
             Marshal.GetFunctionPointerForDelegate(wndProcDelegate));
@@ -76,17 +74,36 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
         InitializeDirectX();
     }
 
+    private HWND FindXamlChild(HWND parentHwnd)
+    {
+        List<HWND> result = [];
+
+        PInvoke.EnumChildWindows(parentHwnd, (hWnd, _) =>
+        {
+            Span<char> buf = stackalloc char[44];
+            PInvoke.GetClassName(hWnd, buf);
+            if (buf.ToString() == "Microsoft.UI.Content.DesktopChildSiteBridge\0")
+            {
+                result.Add(hWnd);
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        return result.FirstOrDefault();
+    }
+
     private IntPtr CustomWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
         const ushort HTCLIENT = 1;
         const uint WM_SETCURSOR = 0x0020;
+        const uint WM_LBUTTONUP = 0x0202;
 
         var IDC_ARROW = MAKEINTRESOURCE(32512);
 
         switch (msg)
         {
             case WM_SETCURSOR:
-                if ((HWND)(nuint)wParam != hwnd && LOWORD(lParam) == HTCLIENT)
+                if ((HWND)(nuint)wParam == hwnd && LOWORD(lParam) == HTCLIENT)
                 {
                     // wParam != hwnd (parent) --> XAML child. So it's the DComp overlay.
                     var hCursor = LoadCursor(default, IDC_ARROW);
@@ -94,6 +111,19 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
                     return 1;
                 }
                 break;
+
+            case WM_LBUTTONUP:
+                int x = LOWORD(lParam);
+                int y = HIWORD(lParam);
+
+                foreach (var surface in _surfaces)
+                {
+                    if (surface.HitTest(x, y))
+                    {
+                        surface.Clicked();
+                    }
+                }
+                return 0;
         }
 
         // Call previous/original WndProc (possibly owned by WinUI) for everything else.
@@ -101,6 +131,7 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     }
 
     private static ushort LOWORD(LPARAM dword) => (ushort)(dword & 0xffff);
+    private static ushort HIWORD(LPARAM dword) => (ushort)((dword >> 16) & 0xffff);
 
     [LibraryImport("USER32.dll", EntryPoint = "LoadCursorW", SetLastError = true),
         DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -224,7 +255,7 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
             _testPatternSurface = new TestPatternSurface(_rootVisual, this);
             _leftBtnSurface = new NavBtnSurface(_rootVisual, this, false, _testPatternSurface);
             _rightBtnSurface = new NavBtnSurface(_rootVisual, this, true, _testPatternSurface);
-            //_surfaces = [_overlaySurface, _leftBtnSurface, _rightBtnSurface];
+            _surfaces = [_testPatternSurface, _leftBtnSurface, _rightBtnSurface];
 
             dcompTarget.SetRoot(_rootVisual);
 
@@ -259,11 +290,17 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
 
         return D3D11.D3D11CreateDevice(DriverType.Hardware, flags, featureLevels); ;
     }
-    private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        var pos = e.GetCurrentPoint(this).Position;
 
-        Debug.WriteLine($"PointerReleased: {pos}");
+    internal void FlipLeft()
+    {
+        if (_testPatternSurface != null)
+            _testPatternSurface.Page = Math.Max(0, _testPatternSurface.Page - 1);
+    }
+
+    internal void FlipRight()
+    {
+        if (_testPatternSurface != null)
+            _testPatternSurface.Page = Math.Min(_testPatternSurface.Pages.Count - 1, _testPatternSurface.Page + 1);
     }
 
     public IDCompositionDesktopDevice? DcompDevice { get => _dcompDevice; }

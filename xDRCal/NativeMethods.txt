@@ -3,3 +3,5 @@ SetWindowLongPtr
 SetCursor
 LoadCursor
 CallWindowProc
+EnumChildWindows
+GetClassName
