@@ -34,8 +34,19 @@ public partial class NavBtnSurface : Surface
 
             DrawButton();
 
-            _d2dContext.EndDraw();
-            _swapChain.Present(1, PresentFlags.None);
+            var hr = _d2dContext.EndDraw();
+
+            if (hr.Failure)
+            {
+                throw new InvalidOperationException($"EndDraw: {hr}");
+            }
+
+            hr = _swapChain.Present(1, PresentFlags.None);
+
+            if (hr.Failure)
+            {
+                throw new InvalidOperationException($"EndDraw: {hr}");
+            }
         }
         catch (Exception ex)
         {

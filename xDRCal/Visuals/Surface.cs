@@ -5,6 +5,7 @@ using Vortice.DCommon;
 using Vortice.Direct2D1;
 using Vortice.Direct3D11;
 using Vortice.DirectComposition;
+using Vortice.DirectWrite;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 
@@ -18,6 +19,9 @@ public interface ISurfaceHost
     ID2D1DeviceContext? D2dContext { get; }
     ID3D11Device? D3dDevice { get; }
     ID2D1Factory1? D2dFactory { get; }
+    IDWriteFactory? DwriteFactory { get; }
+
+    IntPtr Hwnd { get; }
 }
 
 /// <summary>

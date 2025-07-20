@@ -5,3 +5,8 @@ LoadCursor
 CallWindowProc
 EnumChildWindows
 GetClassName
+MonitorFromWindow
+GetMonitorInfo
+GetDisplayConfigBufferSizes
+EnumDisplayDevices
+EDD_GET_DEVICE_INTERFACE_NAME

@@ -13,6 +13,7 @@ using Vortice.Direct2D1;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DirectComposition;
+using Vortice.DirectWrite;
 using Vortice.DXGI;
 using Windows.UI;
 using Windows.Win32;
@@ -40,6 +41,7 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     private NavBtnSurface? _leftBtnSurface, _rightBtnSurface;
     private List<Surface> _surfaces = [];
     private DispatcherQueueTimer? _renderTimer;
+    private IDWriteFactory? _dwriteFactory;
 
     public bool IsUnloading { get; set; }
 
@@ -47,9 +49,10 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     private WndProcDelegate? wndProcDelegate;
 
     private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-    private HWND hwnd;
     private short luminosityA;
     private short luminosityB;
+
+    public IntPtr Hwnd { get; private set; }
 
     public CalibrationDisplay()
     {
@@ -66,9 +69,9 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     /// <param name="parentHwnd">Native Win32 HWND for the root app window.</param>
     public void Initialize(IntPtr parentHwnd)
     {
-        this.hwnd = FindXamlChild((HWND)parentHwnd);
+        Hwnd = FindXamlChild((HWND)parentHwnd);
         wndProcDelegate = CustomWndProc;
-        prevWndProc = PInvoke.SetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC,
+        prevWndProc = PInvoke.SetWindowLongPtr((HWND)Hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC,
             Marshal.GetFunctionPointerForDelegate(wndProcDelegate));
 
         InitializeDirectX();
@@ -103,7 +106,7 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
         switch (msg)
         {
             case WM_SETCURSOR:
-                if ((HWND)(nuint)wParam == hwnd && LOWORD(lParam) == HTCLIENT)
+                if (wParam == Hwnd && LOWORD(lParam) == HTCLIENT)
                 {
                     // wParam != hwnd (parent) --> XAML child. So it's the DComp overlay.
                     var hCursor = LoadCursor(default, IDC_ARROW);
@@ -127,13 +130,13 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
         }
 
         // Call previous/original WndProc (possibly owned by WinUI) for everything else.
-        return CallWindowProc(prevWndProc, hwnd, msg, wParam, lParam);
+        return CallWindowProc(prevWndProc, Hwnd, msg, wParam, lParam);
     }
 
     private static ushort LOWORD(LPARAM dword) => (ushort)(dword & 0xffff);
     private static ushort HIWORD(LPARAM dword) => (ushort)((dword >> 16) & 0xffff);
 
-    [LibraryImport("USER32.dll", EntryPoint = "LoadCursorW", SetLastError = true),
+    [LibraryImport("USER32.dll", EntryPoint = "LoadCursorW"),
         DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [SupportedOSPlatform("windows5.0")]
     private static partial IntPtr LoadCursor(IntPtr hInstance, IntPtr lpCursorName);
@@ -180,7 +183,7 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
         // Restore original wndproc
         if (prevWndProc != IntPtr.Zero)
         {
-            PInvoke.SetWindowLongPtr(hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, prevWndProc);
+            PInvoke.SetWindowLongPtr((HWND)Hwnd, WINDOW_LONG_PTR_INDEX.GWL_WNDPROC, prevWndProc);
         }
     }
 
@@ -242,14 +245,14 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
         {
             _d3dDevice = CreateD3DDevice();
             _dxgiFactory = GetFactory();
-            _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(FactoryType.SingleThreaded);
+            _d2dFactory = D2D1.D2D1CreateFactory<ID2D1Factory1>(Vortice.Direct2D1.FactoryType.SingleThreaded);
             using IDXGIDevice dxgiDevice = _d3dDevice.QueryInterface<IDXGIDevice>();
             _d2dDevice = _d2dFactory.CreateDevice(dxgiDevice);
             _d2dContext = _d2dDevice.CreateDeviceContext(DeviceContextOptions.None);
 
             // dcomp setup
             _dcompDevice = DCompositionCreateDevice3<IDCompositionDesktopDevice>(dxgiDevice);
-            var dcompTarget = _dcompDevice.CreateSurfaceFromHwnd(hwnd, true);
+            var dcompTarget = _dcompDevice.CreateSurfaceFromHwnd(Hwnd, true);
 
             _rootVisual = _dcompDevice.CreateVisual();
             _testPatternSurface = new TestPatternSurface(_rootVisual, this);
@@ -258,6 +261,8 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
             _surfaces = [_testPatternSurface, _leftBtnSurface, _rightBtnSurface];
 
             dcompTarget.SetRoot(_rootVisual);
+
+            _dwriteFactory = DWrite.DWriteCreateFactory<IDWriteFactory>();
 
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
             // fire-and-forget is fine here; no RenderLoop for these.
@@ -313,11 +318,14 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
 
     public ID3D11Device? D3dDevice { get => _d3dDevice; }
 
+    public IDWriteFactory? DwriteFactory { get => _dwriteFactory; }
+
     public TestPatternSurface? OverlaySurface { get => _testPatternSurface; }
 
     public NavBtnSurface? LeftBtnSurface { get => _leftBtnSurface; }
 
     public NavBtnSurface? RightBtnSurface { get => _rightBtnSurface; }
+
     public short LuminosityA
     {
         get => luminosityA;
