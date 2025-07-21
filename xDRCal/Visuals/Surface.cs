@@ -121,10 +121,11 @@ public abstract partial class Surface : IDisposable
         }
 
         // We'll release old target etc after resizing.
-        var oldTarget = _d2dContext.Target;
-        var oldTargetBitmap = _d2dTargetBitmap;
+        var oldTarget = _d2dTargetBitmap;
         var oldBrush = _brush;
         var oldSwapChain = _swapChain;
+
+        _d2dContext.Target = null;
 
         uint width = (uint)pos.Width;
         uint height = (uint)pos.Height;
@@ -156,14 +157,15 @@ public abstract partial class Surface : IDisposable
             //    works.)
             _swapChain = _dxgiFactory.CreateSwapChainForComposition(_d3dDevice, swapDesc);
 
-            if (HdrMode)
-            {
-                var swapChain3 = _swapChain.QueryInterfaceOrNull<IDXGISwapChain3>();
-                if (swapChain3 is not null)
-                {
-                    swapChain3.SetColorSpace1(ColorSpaceType.RgbFullG10NoneP709);
-                }
-            }
+            // Do not enable; causes black-frame freezes (probable Windows bug.)
+            //if (HdrMode)
+            //{
+            //    var swapChain3 = _swapChain.QueryInterfaceOrNull<IDXGISwapChain3>();
+            //    if (swapChain3 is not null)
+            //    {
+            //        swapChain3.SetColorSpace1(ColorSpaceType.RgbFullG10NoneP709);
+            //    }
+            //}
 
             using var backBuffer = GetBuffer();
             using var dxgiSurface = backBuffer.QueryInterface<IDXGISurface>();
@@ -213,7 +215,6 @@ public abstract partial class Surface : IDisposable
         // idk, to me it seems safer to defer this 'till the next UI tick:
         await Task.Yield();
         oldTarget?.Dispose();
-        oldTargetBitmap?.Dispose();
         oldBrush?.Dispose();
         oldSwapChain?.Dispose();
     }

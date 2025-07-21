@@ -8,9 +8,14 @@ I mainly built this as an exploratory project to test out Direct2D HDR compositi
 
 ## Developer Notes
 
-As of Windows 11 24H2, Windows and WinUI 3 both have a number of platform limitations related to swap chains in general and HDR surfaces in
-particular.
+As of Windows 11 24H2, Windows and WinUI 3 both have a number of platform limitations related to swap chains in general
+and HDR surfaces in particular.
 
+- **IDXGISwapChain3.SetColorSpace1 can be unreliable:**  
+This call was causing the compositor to get stuck in a black-frame state for some reason after surface resize; probably
+a Windows or NVidia bug. Since it was only added on an "explicit is better than implicit" theory, I've removed it.
+(Setting `ColorSpaceType.RgbFullG10NoneP709` on a surface that defaults to scRGB is just belt-and-suspenders.)
+Implications for other projects are unknown, but if you need colorspace translation, consider shaders.
 - **Don't use [ResizeBuffers](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers)
 on a visible swap-chain:**  
 This creates resize flicker, at least if you're also centering. DirectComposition helps by batching changes atomically
