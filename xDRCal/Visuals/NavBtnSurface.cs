@@ -19,7 +19,7 @@ public partial class NavBtnSurface : Surface
         this.isRight = isRight;
         HasAlpha = true;
     }
-    
+
     public override void Render()
     {
         try
@@ -106,8 +106,8 @@ public partial class NavBtnSurface : Surface
             sink.Close();
         }
 
-        // Fill the result (light grey, semi-transparent)
-        var circleColor = new Color4(220f / 255f, 220f / 255f, 220f / 255f, 160f / 255f);
+        // Fill the result (light grey)
+        var circleColor = new Color4(220f / 255f, 220f / 255f, 220f / 255f, 1.0f);
         _brush.Color = circleColor;
         _d2dContext.FillGeometry(combined, _brush);
     }
@@ -117,10 +117,10 @@ public partial class NavBtnSurface : Surface
         if (isRight)
         {
             ((CalibrationDisplay)host).FlipRight();
-        } else
+        }
+        else
         {
             ((CalibrationDisplay)host).FlipLeft();
-
         }
     }
 }

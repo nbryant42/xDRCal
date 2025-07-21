@@ -57,8 +57,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (HdrToggle.IsOn)
         {
-            if (CalibrationView.OverlaySurface != null)
-                CalibrationView.OverlaySurface.HdrMode = true;
+            if (CalibrationView.TestPatternSurface != null)
+                CalibrationView.TestPatternSurface.HdrMode = true;
             SliderA.Maximum = 1023;
             SliderA.DisplayMode = SliderDisplayMode.Nits;
             SliderB.Maximum = 1023;
@@ -67,8 +67,8 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         else
         {
-            if (CalibrationView.OverlaySurface != null)
-                CalibrationView.OverlaySurface.HdrMode = false;
+            if (CalibrationView.TestPatternSurface != null)
+                CalibrationView.TestPatternSurface.HdrMode = false;
             SliderA.Maximum = 255;
             SliderA.DisplayMode = SliderDisplayMode.Hex;
             SliderB.Maximum = 255;
@@ -141,7 +141,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         else
         {
-            width = (int)windowWidth;
+            width = (int)availableWidth;
             height = (int)Math.Min(Round(targetArea / availableWidth), availableHeight);
         }
 
@@ -154,12 +154,11 @@ public sealed partial class MainWindow : Window, IDisposable
             int y = ((int)availableHeight - height) / 2;
 
             // add a border as workaround for Windows SDR clamping behavior
-            x -= Math.Max(0, Surface.MIN_SIZE - width) / 2;
-            y -= Math.Max(0, Surface.MIN_SIZE - height) / 2;
+            int border = Math.Max(0, Surface.MIN_SIZE - Math.Min(width, height)) / 2;
 
-            RectI pos = new(x, y, Math.Max(width, Surface.MIN_SIZE), Math.Max(height, Surface.MIN_SIZE));
+            RectI pos = new(x - border, y - border, width + border * 2, height + border * 2);
 
-            CalibrationView.OverlaySurface?.Reposition(pos);
+            CalibrationView.TestPatternSurface?.Reposition(pos, border);
         }
     }
 

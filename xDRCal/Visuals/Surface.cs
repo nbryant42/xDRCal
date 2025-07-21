@@ -44,7 +44,8 @@ public abstract partial class Surface : IDisposable
     protected readonly ID2D1DeviceContext? _d2dContext;
 
     // per-surface props (these affect visible output)
-    protected RectI pos; // device-dependent coordinates!
+    protected RectI pos;  // device-dependent coordinates!
+    protected int border; // ditto!
     private bool hdrMode;
     protected bool HasAlpha { get; set; }
 
@@ -97,11 +98,21 @@ public abstract partial class Surface : IDisposable
         }
     }
 
-    public void Reposition(RectI _pos)
+    /// <summary>
+    /// Dimensions are in device-dependent pixels, but except for that, positioning is intended to be as per XAML, with
+    /// capabilities prioritized around absolute placement and low-level control. Mostly the intent is that surfaces
+    /// will have an associated XAML control, derive their bounding rect from there, and float an overlay directly on
+    /// top. When the XAML layout engine resizes a control, that control is expected to the listen to the SizeChanged
+    /// event and reposition any associated surfaces.
+    /// </summary>
+    /// <param name="_pos">The bounding rect of the surface.</param>
+    /// <param name="_border">The width of the border, which falls inside the bounding box.</param>
+    public void Reposition(RectI _pos, int _border = 0)
     {
         if (_pos.Width > 0 && _pos.Height > 0)
         {
             pos = _pos;
+            border = _border;
 
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
             // fire-and-forget should be fine here.

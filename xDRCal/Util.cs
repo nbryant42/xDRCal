@@ -4,8 +4,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.Marshalling;
-using Windows.Devices.Display.Core;
 using Windows.Win32;
 using Windows.Win32.Devices.Display;
 using Windows.Win32.Foundation;
@@ -16,9 +14,29 @@ namespace xDRCal;
 
 public partial class Util
 {
+    /// <summary>
+    /// Due to legacy Windows design issues, this may fail to figure out which monitor the app is on, in which case
+    /// it returns null. Otherwise, returns true or false.
+    /// </summary>
+    /// <param name="hwnd">HWND of a window on the monitor to check for HDR enablement</param>
+    /// <returns>true, false, or null</returns>
     public static bool? IsHdrEnabled(IntPtr hwnd)
     {
+        // MonitorFromWindow seems to be a bit of a legacy function and possibly not the right path on modern Windows.
+        // The issue is that each HMONITOR can *sometimes* -- not always, and not very predictably -- be associated with
+        // multiple physical monitors, as documented at
+        // https://learn.microsoft.com/en-us/windows/win32/monitor/using-the-high-level-monitor-configuration-functions
+        //
+        // For now, we'll attempt to kludge through this as best we can, but the long-term solution might involve
+        // obtaining the desktop geometry (how?) and resolving manually based on more recent APIs.
         var hMonitor = PInvoke.MonitorFromWindow((HWND)hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+
+        if (PInvoke.GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out var pdwNumberOfPhysicalMonitors) &&
+            pdwNumberOfPhysicalMonitors > 1)
+        {
+            Debug.WriteLine($"pdwNumberOfPhysicalMonitors = {pdwNumberOfPhysicalMonitors}");
+        }
+
         var mi = new MONITORINFOEX { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
         if (!GetMonitorInfo(hMonitor, ref mi))
         {
@@ -34,9 +52,11 @@ public partial class Util
             return null;
         }
 
+        //Debug.WriteLine($"Mapped {mi.szDevice} to {dip}");
+
         if (!FindDisplayConfigIdForDevice(dip, out var adapterId, out var targetId))
         {
-            Debug.WriteLine("FindDisplayConfigIdForDevice failed");
+            Debug.WriteLine($"FindDisplayConfigIdForDevice failed: {dip}");
             return null;
         }
 
@@ -63,18 +83,33 @@ public partial class Util
 
     private static string? FindDeviceInterfacePath(string deviceName)
     {
+        var list = new List<string>();
+
         foreach (var adapter in EnumDisplayDevices())
         {
             if (deviceName == adapter.DeviceName.ToString())
             {
-                DISPLAY_DEVICEW monitor = new() { cb = (uint)Marshal.SizeOf(typeof(DISPLAY_DEVICEW)) };
-                if (PInvoke.EnumDisplayDevices(adapter.DeviceName.ToString(), 0, ref monitor, PInvoke.EDD_GET_DEVICE_INTERFACE_NAME))
+                // Here's where it gets tricky. Looks like the HMONITOR really corresponds to an adapter, but there can
+                // sometimes be more than one monitor per adapter (e.g. user recently had Extend mode enabled...)
+                //
+                // Maybe we can at least filter based on state flags.
+                foreach (var monitor in EnumDisplayDevices(adapter.DeviceName.ToString(), PInvoke.EDD_GET_DEVICE_INTERFACE_NAME))
                 {
-                    return monitor.DeviceID.ToString();
+                    //Debug.WriteLine($"All monitor fields for {deviceName}:");
+                    //Debug.WriteLine($"DeviceName: {monitor.DeviceName}");
+                    //Debug.WriteLine($"DeviceString: {monitor.DeviceString}");
+                    //Debug.WriteLine($"DeviceID: {monitor.DeviceID}");
+                    //Debug.WriteLine($"DeviceKey: {monitor.DeviceKey}");
+                    //Debug.WriteLine($"StateFlags: {monitor.StateFlags}");
+
+                    if ((monitor.StateFlags & PInvoke.DISPLAY_DEVICE_ACTIVE) != 0)
+                    {
+                        list.Add(monitor.DeviceID.ToString());
+                    }
                 }
             }
         }
-        return null;
+        return list.Count == 1 ? list[0] : null;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
@@ -137,6 +172,7 @@ public partial class Util
                 targetId = targetInfo.id;
                 return true;
             }
+            Debug.WriteLine($"{adapterName.monitorDevicePath} != {deviceName}");
         }
         return false;
     }

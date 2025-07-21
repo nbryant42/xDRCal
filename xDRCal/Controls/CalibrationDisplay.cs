@@ -317,7 +317,7 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
 
     public IDWriteFactory? DwriteFactory { get => _dwriteFactory; }
 
-    public TestPatternSurface? OverlaySurface { get => _testPatternSurface; }
+    public TestPatternSurface? TestPatternSurface { get => _testPatternSurface; }
 
     public NavBtnSurface? LeftBtnSurface { get => _leftBtnSurface; }
 
