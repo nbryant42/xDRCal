@@ -32,22 +32,49 @@
         <StackPanel x:Name="Controls" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center"
                     VerticalAlignment="Bottom" Background="#FF171717" BorderThickness="4,4,4,0" CornerRadius="6"
                     BorderBrush="#FF171717">
-                
-            <ToggleSwitch x:Name="FullscreenToggle"
-                Header="Fullscreen (F11)"
-                Toggled="FullscreenToggle_Toggled"
-                VerticalAlignment="Center"
-                ToolTipService.ToolTip="Toggle fullscreen mode"
-                ToolTipService.Placement="Left"
-                Margin="0,0,0,0"/>
 
-            <ToggleSwitch x:Name="HdrToggle"
-                Header="HDR (F12)"
-                Toggled="HdrToggle_Toggled"
-                ToolTipService.ToolTip="Toggle HDR mode"
-                ToolTipService.Placement="Left"
-                VerticalAlignment="Center"/>
-                    
+            <Grid VerticalAlignment="Center">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" HorizontalAlignment="Left" Margin="8,0,8,0">Fullscreen (F11)</TextBlock>
+                <ToggleSwitch Grid.Row="1" Grid.Column="0" x:Name="FullscreenToggle"
+                    Toggled="FullscreenToggle_Toggled"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    ToolTipService.ToolTip="Toggle fullscreen mode"
+                    ToolTipService.Placement="Left"
+                    MinWidth="0"
+                    Margin="8,0,8,0"/>
+
+                <TextBlock Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" Margin="8,0,8,0">HDR (F12)</TextBlock>
+                <ToggleSwitch Grid.Row="1" Grid.Column="1" x:Name="HdrToggle"
+                    Toggled="HdrToggle_Toggled"
+                    ToolTipService.ToolTip="Toggle HDR mode"
+                    ToolTipService.Placement="Left"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Left"
+                    MinWidth="0"
+                    Margin="8,0,8,0"/>
+
+                <TextBlock Grid.Row="0" Grid.Column="2" HorizontalAlignment="Left" Margin="8,0,8,0">HDR EOTF</TextBlock>
+                <ComboBox Grid.Row="1" Grid.Column="2" x:Name="EOTFComboBox" SelectionChanged="EOTF_SelectionChanged"
+                          VerticalAlignment="Center"  HorizontalAlignment="Left" SelectedIndex="0"
+                          IsEnabled="False" MinWidth="192" Margin="8,0,8,0">
+                    <ComboBoxItem x:Name="ComboBoxItem_PQ">PQ</ComboBoxItem>
+                    <ComboBoxItem x:Name="ComboBoxItem_sRGB">sRGB (extended)</ComboBoxItem>
+                    <ComboBoxItem x:Name="ComboBoxItem_Gamma22">Gamma 2.2 (extended)</ComboBoxItem>
+                </ComboBox>
+            </Grid>
+
             <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
                 <controls:SliderWithValueBox x:Name="SliderA"
                                                 Value="0"

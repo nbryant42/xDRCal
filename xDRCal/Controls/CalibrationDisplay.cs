@@ -40,7 +40,9 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     private TestPatternSurface? _testPatternSurface;
     private NavBtnSurface? _leftBtnSurface, _rightBtnSurface;
     private List<Surface> _surfaces = [];
-    private DispatcherQueueTimer? _renderTimer;
+
+    // previous bug workaround no longer seems necessary - not sure why
+    //private DispatcherQueueTimer? _renderTimer;
     private IDWriteFactory? _dwriteFactory;
 
     public bool IsUnloading { get; set; }
@@ -141,9 +143,11 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     [SupportedOSPlatform("windows5.0")]
     private static partial IntPtr LoadCursor(IntPtr hInstance, IntPtr lpCursorName);
 
-    [LibraryImport("USER32.dll", EntryPoint = "CallWindowProcW"), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("USER32.dll", EntryPoint = "CallWindowProcW"),
+        DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [SupportedOSPlatform("windows5.0")]
-    private static partial IntPtr CallWindowProc(nint lpPrevWndFunc, IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    private static partial IntPtr CallWindowProc(nint lpPrevWndFunc, IntPtr hWnd, uint Msg,
+        IntPtr wParam, IntPtr lParam);
 
     private static IntPtr MAKEINTRESOURCE(ushort i) => i;
 
@@ -151,8 +155,8 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     {
         IsUnloading = true;
 
-        _renderTimer?.Stop();
-        _renderTimer = null;
+        //_renderTimer?.Stop();
+        //_renderTimer = null;
 
         _d3dDevice?.Dispose();
         _d3dDevice = null;
@@ -187,16 +191,15 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
         }
     }
 
-    // Must call Render() at >=24Hz on any HDR surfaces, to prevent DComp from downgrading the output to SDR.
-    // This also happens in SwapChainPanel; apparently a well-known quirk of Windows
-    // (implemented for power conservation, etc)
-    private void StartRenderLoop()
-    {
-        _renderTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _renderTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / 24.0);
-        _renderTimer.Tick += (_, _) => _testPatternSurface?.Render();
-        _renderTimer.Start();
-    }
+    // Looked like we must call Render() at >=24Hz on any HDR surfaces, to prevent DComp from downgrading the output to
+    // SDR. This was also happening in SwapChainPanel, but I may have unknowingly fixed it -- no longer seems necessary.
+    //private void StartRenderLoop()
+    //{
+    //    _renderTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+    //    _renderTimer.Interval = TimeSpan.FromMilliseconds(1000.0 / 24.0);
+    //    _renderTimer.Tick += (_, _) => _testPatternSurface?.Render();
+    //    _renderTimer.Start();
+    //}
 
     private static IDXGIFactory2 GetFactory()
     {
@@ -268,7 +271,7 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
             await _leftBtnSurface.ResizeRenderTarget(false);
             await _rightBtnSurface.ResizeRenderTarget(false);
             await _testPatternSurface.ResizeRenderTarget(true);
-            StartRenderLoop();
+            //StartRenderLoop();
         }
         catch (Exception ex)
         {
@@ -297,13 +300,19 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
     internal void FlipLeft()
     {
         if (_testPatternSurface != null)
+        {
             _testPatternSurface.Page = Math.Max(0, _testPatternSurface.Page - 1);
+            _testPatternSurface.Render();
+        }
     }
 
     internal void FlipRight()
     {
         if (_testPatternSurface != null)
+        {
             _testPatternSurface.Page = Math.Min(_testPatternSurface.Pages.Count - 1, _testPatternSurface.Page + 1);
+            _testPatternSurface.Render();
+        }
     }
 
     public IDCompositionDesktopDevice? DcompDevice { get => _dcompDevice; }
@@ -342,4 +351,6 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
             _testPatternSurface?.Render();
         }
     }
+
+    public ComboBox? EOTFComboBox { get; set; }
 }

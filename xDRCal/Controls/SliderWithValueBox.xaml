@@ -8,12 +8,13 @@
                  Width="128"
                  IsReadOnly="True"
                  FontFamily="Consolas"
-                 Margin="0,0,0,0"/>
+                 Margin="8,0,8,0"/>
         <Slider x:Name="Slider"
                 Minimum="0"
                 Maximum="255"
                 TickFrequency="1"
                 Width="1024"
-                ValueChanged="Slider_ValueChanged" />
+                ValueChanged="Slider_ValueChanged"
+                Margin="8,0,8,0"/>
     </StackPanel>
 </UserControl>

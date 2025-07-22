@@ -1,9 +1,12 @@
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using System;
+using System.Diagnostics;
+using System.Linq;
 using Vortice.Mathematics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -22,7 +25,13 @@ public sealed partial class MainWindow : Window, IDisposable
 
     public MainWindow()
     {
-        this.InitializeComponent();
+        InitializeComponent();
+        SliderA.EOTFComboBox = EOTFComboBox;
+        SliderB.EOTFComboBox = EOTFComboBox;
+        CalibrationView.EOTFComboBox = EOTFComboBox;
+        ComboBoxItem_PQ.Tag = EOTF.pq;
+        ComboBoxItem_sRGB.Tag = EOTF.sRGB;
+        ComboBoxItem_Gamma22.Tag = EOTF.gamma22;
 
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
@@ -55,28 +64,66 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void HdrToggle_Toggled(object sender, RoutedEventArgs e)
     {
-        var peak = Util.GetPeakPQ(WindowNative.GetWindowHandle(this));
+        UpdateHDRSettings(null);
+    }
+
+    private void EOTF_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateHDRSettings((EOTF?)((ComboBoxItem?)e.RemovedItems.SingleOrDefault())?.Tag);
+    }
+
+    private void UpdateHDRSettings(EOTF? previousEOTF)
+    {
+        EOTFComboBox.IsEnabled = HdrToggle.IsOn;
 
         if (HdrToggle.IsOn)
         {
             if (CalibrationView.TestPatternSurface != null)
                 CalibrationView.TestPatternSurface.HdrMode = true;
-            SliderA.Maximum = 1023;
-            SliderA.DisplayMode = SliderDisplayMode.Nits;
-            SliderB.Maximum = 1023;
-            SliderB.Value = peak;
-            SliderB.DisplayMode = SliderDisplayMode.Nits;
+
+            if (SliderA != null)
+            {
+                SliderA.Maximum = 1023;
+                SliderA.DisplayMode = SliderDisplayMode.Nits;
+                if (previousEOTF != null)
+                    Recalc(SliderA, previousEOTF);
+            }
+
+            if (SliderB != null)
+            {
+                var eotf = (EOTF)((ComboBoxItem)EOTFComboBox.SelectedItem).Tag;
+                SliderB.Maximum = 1023;
+                SliderB.DisplayMode = SliderDisplayMode.Nits;
+                if (previousEOTF == null) // EOTF did not change, so HDR mode was toggled on.
+                    SliderB.Value = Util.GetPeakLuminanceCode(WindowNative.GetWindowHandle(this), eotf);
+                else
+                    Recalc(SliderB, previousEOTF);
+            }
         }
         else
         {
             if (CalibrationView.TestPatternSurface != null)
                 CalibrationView.TestPatternSurface.HdrMode = false;
-            SliderA.Maximum = 255;
-            SliderA.DisplayMode = SliderDisplayMode.Hex;
-            SliderB.Maximum = 255;
-            SliderB.Value = 255;
-            SliderB.DisplayMode = SliderDisplayMode.Hex;
+
+            if (SliderA != null)
+            {
+                SliderA.Maximum = 255;
+                SliderA.DisplayMode = SliderDisplayMode.Hex;
+            }
+
+            if (SliderB != null)
+            {
+                SliderB.Maximum = 255;
+                SliderB.DisplayMode = SliderDisplayMode.Hex;
+            }
         }
+    }
+
+    private void Recalc(SliderWithValueBox slider, EOTF previousEOTF)
+    {
+        var eotf = (EOTF)((ComboBoxItem)EOTFComboBox.SelectedItem).Tag;
+
+        slider.Value = MathF.Round(eotf.ToCode(previousEOTF.ToNits((float)slider.Value)));
     }
 
     private void Window_SizeChanged(object sender, WindowSizeChangedEventArgs e)

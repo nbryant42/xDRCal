@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.Arm;
 using Windows.Devices.Display.Core;
 using Windows.Win32;
 using Windows.Win32.Devices.Display;
@@ -24,12 +25,11 @@ public partial class Util
     {
         var dip = FindDeviceInterfacePath((HWND)hwnd);
 
-        if (dip == null)
-        {
-            Debug.WriteLine("FindDeviceInterfacePath failed");
-            return null;
-        }
+        return dip == null ? null : IsHdrEnabled(dip);
+    }
 
+    public static bool? IsHdrEnabled(string dip)
+    {
         if (!FindDisplayConfigIdForDevice(dip, out var adapterId, out var targetId))
         {
             Debug.WriteLine($"FindDisplayConfigIdForDevice failed: {dip}");
@@ -65,11 +65,9 @@ public partial class Util
     /// </summary>
     /// <param name="hwnd">HWND of a window on the monitor</param>
     /// <returns>peak luminance for the monitor or null</returns>
-    public static float? GetPeakNits(IntPtr hwnd)
+    public static float? GetPeakNits(string deviceInterfacePath)
     {
-        var dip = FindDeviceInterfacePath((HWND)hwnd);
-
-        if (dip == null)
+        if (deviceInterfacePath == null)
         {
             return null;
         }
@@ -79,7 +77,7 @@ public partial class Util
 
         foreach (var target in targets)
         {
-            if (!target.IsStale && target.DeviceInterfacePath == dip)
+            if (!target.IsStale && target.DeviceInterfacePath == deviceInterfacePath)
             {
                 var monitor = target.TryGetMonitor();
 
@@ -93,13 +91,20 @@ public partial class Util
         return null;
     }
 
-    // just defaults to 1023 (=10K nits!) if we can't figure out the monitor's real value.
-    // see GetPeakNits if you want to differentiate on nulls.
-    public static int GetPeakPQ(IntPtr hwnd)
+    public static int GetPeakLuminanceCode(IntPtr hwnd, EOTF eotf)
     {
-        var nits = GetPeakNits(hwnd);
+        var dip = FindDeviceInterfacePath((HWND)hwnd);
 
-        return nits == null ? 1023 : NitsToPQCode((float)nits);
+        if (dip != null && IsHdrEnabled(dip) == true)
+        {
+            var nits = GetPeakNits(dip);
+
+            return nits == null ? 1023 : (int)MathF.Round(eotf.ToCode((float)nits));
+        }
+        else
+        {
+            return (int)MathF.Round(eotf.ToCode(80.0f));
+        }
     }
 
     private static string? FindDeviceInterfacePath(HWND hwnd)
@@ -126,7 +131,14 @@ public partial class Util
             return null;
         }
 
-        return FindDeviceInterfacePath(mi.szDevice);
+        var dip = FindDeviceInterfacePath(mi.szDevice);
+
+        if (dip == null)
+        {
+            Debug.WriteLine("FindDeviceInterfacePath failed");
+        }
+
+        return dip;
     }
 
     private static IEnumerable<DISPLAY_DEVICEW> EnumDisplayDevices(string? adapterName = null, uint flags = 0)
@@ -234,40 +246,6 @@ public partial class Util
             //Debug.WriteLine($"{adapterName.monitorDevicePath} != {deviceName}");
         }
         return false;
-    }
-
-    public static float PQCodeToNits(int N)
-    {
-        return PQFloatToNits(N / 1023.0f);
-    }
-
-    public static float PQFloatToNits(float Nn)
-    {
-        float Nn_pow = MathF.Pow(Nn, 32.0f / 2523.0f);
-
-        float numerator = Math.Max(Nn_pow - 107.0f / 128.0f, 0.0f);
-        float denominator = 2413.0f / 128.0f - 2392.0f / 128.0f * Nn_pow;
-
-        return MathF.Pow(numerator / denominator, 8192.0f / 1305.0f) * 10000.0f;
-    }
-
-    public static int NitsToPQCode(float Fd)
-    {
-        var Ym1 = MathF.Pow(Fd / 10000.0f, 1305.0f / 8192.0f);
-
-        var numerator = (107.0f / 128.0f) + (2413.0f / 128.0f) * Ym1;
-        var denominator = 1.0f + (2392.0f / 128.0f) * Ym1;
-
-        return (int)MathF.Round(MathF.Pow(numerator / denominator, 2523.0f / 32.0f) * 1023.0f);
-    }
-
-
-    public static float SrgbToLinear(float value)
-    {
-        if (value <= 0.04045f)
-            return value / 12.92f;
-        else
-            return MathF.Pow((value + 0.055f) / 1.055f, 2.4f);
     }
 
     public static long GetAdvancedColorInfo2(LUID adapterId, uint targetId,

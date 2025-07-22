@@ -17,6 +17,8 @@ public enum SliderDisplayMode
 
 public sealed partial class SliderWithValueBox : UserControl
 {
+    public ComboBox? EOTFComboBox { get; set; }
+
     public SliderWithValueBox()
     {
         InitializeComponent();
@@ -89,14 +91,14 @@ public sealed partial class SliderWithValueBox : UserControl
                 break;
 
             case SliderDisplayMode.Percent:
-                // Clamp to [0–100] and convert to percent
-                double percent = Math.Round(Slider.Value / Slider.Maximum * 100);
-                ValueBox.Text = $"{percent:0}%";
+                ValueBox.Text = $"{Math.Round(Slider.Value / Slider.Maximum * 100.0):0}%";
                 break;
 
             case SliderDisplayMode.Nits:
-                double nits = Util.PQCodeToNits(value);
-                ValueBox.Text = $"{nits:G4} nits";
+                if (EOTFComboBox != null)
+                {
+                    ValueBox.Text = $"{((EOTF)((ComboBoxItem)EOTFComboBox.SelectedItem).Tag).ToNits(value):G4} nits";
+                }
                 break;
         }
     }

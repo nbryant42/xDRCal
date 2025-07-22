@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.UI.Xaml.Controls;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -29,22 +30,26 @@ public partial class TestPatternSurface : Surface
         try
         {
             var host = (CalibrationDisplay)this.host;
+            uint dpi = PInvoke.GetDpiForWindow((HWND)host.Hwnd);
 
             if (host.IsUnloading || _d2dContext == null || _swapChain == null || _brush == null ||
-                pos.Width <= 0 || pos.Height <= 0)
+                pos.Width <= 0 || pos.Height <= 0 || dpi <= 0 || host.EOTFComboBox == null)
                 return;
+
+            float scale = dpi / 96.0f;
 
             _d2dContext.Target = _d2dTargetBitmap;
             _d2dContext.BeginDraw();
 
             var grey = 23.0f / 255.0f; // = #171717 to match our XAML background
             float lumaA, lumaB;
+            var eotf = (EOTF)((ComboBoxItem)host.EOTFComboBox.SelectedItem).Tag;
 
             if (HdrMode)
             {
-                lumaA = Util.PQCodeToNits(host.LuminosityA) * 0.0125f; // 1/80 nits
-                lumaB = Util.PQCodeToNits(host.LuminosityB) * 0.0125f;
-                grey = Util.SrgbToLinear(grey);
+                lumaA = eotf.ToScRGB(host.LuminosityA);
+                lumaB = eotf.ToScRGB(host.LuminosityB);
+                grey = EOTF.sRGB.ToScRGB(grey * 255.0f);
             }
             else
             {
@@ -54,13 +59,6 @@ public partial class TestPatternSurface : Surface
 
             _d2dContext.Clear(new Color4(grey, grey, grey));
             _d2dContext.Transform = Matrix3x2.CreateTranslation(border, border);
-
-            uint dpi = PInvoke.GetDpiForWindow((HWND)host.Hwnd);
-            if (dpi <= 0)
-            {
-                return; // the app is shutting down.
-            }
-            float scale = dpi / 96.0f;
 
             Pages[Page].Invoke(pos.Width - border * 2, pos.Height - border * 2, scale);
 
@@ -86,18 +84,20 @@ public partial class TestPatternSurface : Surface
 
     private void DrawChessboard(int width, int height, float scale)
     {
-        if (_d2dContext == null || _brush == null)
+        var host = (CalibrationDisplay)this.host;
+
+        if (_d2dContext == null || _brush == null || host.EOTFComboBox == null)
         {
             throw new InvalidOperationException("missing reference");
         }
 
-        var host = (CalibrationDisplay)this.host;
         float lumaA, lumaB;
+        var eotf = (EOTF)((ComboBoxItem)host.EOTFComboBox.SelectedItem).Tag;
 
         if (HdrMode)
         {
-            lumaA = Util.PQCodeToNits(host.LuminosityA) * 0.0125f; // 1/80 nits
-            lumaB = Util.PQCodeToNits(host.LuminosityB) * 0.0125f;
+            lumaA = eotf.ToScRGB(host.LuminosityA);
+            lumaB = eotf.ToScRGB(host.LuminosityB);
         }
         else
         {
@@ -192,7 +192,7 @@ public partial class TestPatternSurface : Surface
     private void GammaSetup(float scale, CalibrationDisplay host, out string caption, out Func<float, float> gammaFunc,
         out Func<float, string> labelFunc, out IDWriteTextFormat textFormat, out ID2D1SolidColorBrush textBrush)
     {
-        if (host.DwriteFactory == null || _d2dContext == null)
+        if (host.DwriteFactory == null || _d2dContext == null || host.EOTFComboBox == null)
         {
             throw new InvalidOperationException("missing reference");
         }
@@ -203,9 +203,11 @@ public partial class TestPatternSurface : Surface
             // `enc` is the raw slider value selected by user, [0..1023]
             // use the floating point representation and don't round here; give 12-bit monitors a chance to shine in
             // `DrawBandingTest`
-            gammaFunc = enc => Util.PQFloatToNits(enc / 1023.0f) * 0.0125f; // 1/80 nits
-            labelFunc = enc => $"{Util.PQFloatToNits(enc / 1023.0f):G4}";
-            caption = desktopIsHDR ? "PQ EOTF" : "PQ EOTF (mapped onto monitor native gamma)";
+            var eotf = (EOTF)((ComboBoxItem)host.EOTFComboBox.SelectedItem).Tag;
+            gammaFunc = eotf.ToScRGB;
+            labelFunc = enc => $"{eotf.ToNits(enc):G4}";
+            var name = ((ComboBoxItem)host.EOTFComboBox.SelectedItem).Content;
+            caption = desktopIsHDR ? $"{name} EOTF" : $"{name} EOTF (mapped onto monitor native gamma)";
         }
         else
         {

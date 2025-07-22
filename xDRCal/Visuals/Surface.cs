@@ -31,7 +31,8 @@ public interface ISurfaceHost
 public abstract partial class Surface : IDisposable
 {
     // device-DEPENDENT pixel size (assuming square surface) below which Windows clamps HDR swap-chains to SDR
-    public const int MIN_SIZE = 274;
+    // this no longer seems necessary - not sure why
+    public const int MIN_SIZE = 0; //274;
 
     // shared refs across surfaces: (we are not responsible for Dispose)
     protected readonly ISurfaceHost host;
