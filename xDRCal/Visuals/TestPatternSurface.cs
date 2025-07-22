@@ -18,11 +18,11 @@ public partial class TestPatternSurface : Surface
     public TestPatternSurface(IDCompositionVisual2? _parentVisual, CalibrationDisplay host) :
         base(_parentVisual, host)
     {
-        Pages = [DrawChessboard, DrawGammaRamp];
+        Pages = [DrawChessboard, DrawGammaRamp, DrawBandingTest];
     }
 
     public int Page { get; set; }
-    public List<Action<int, int>> Pages { get; }
+    public List<Action<int, int, float>> Pages { get; }
 
     public override void Render()
     {
@@ -55,7 +55,14 @@ public partial class TestPatternSurface : Surface
             _d2dContext.Clear(new Color4(grey, grey, grey));
             _d2dContext.Transform = Matrix3x2.CreateTranslation(border, border);
 
-            Pages[Page].Invoke(pos.Width - border * 2, pos.Height - border * 2);
+            uint dpi = PInvoke.GetDpiForWindow((HWND)host.Hwnd);
+            if (dpi <= 0)
+            {
+                return; // the app is shutting down.
+            }
+            float scale = dpi / 96.0f;
+
+            Pages[Page].Invoke(pos.Width - border * 2, pos.Height - border * 2, scale);
 
             var hr = _d2dContext.EndDraw();
 
@@ -77,7 +84,7 @@ public partial class TestPatternSurface : Surface
         }
     }
 
-    private void DrawChessboard(int width, int height)
+    private void DrawChessboard(int width, int height, float scale)
     {
         if (_d2dContext == null || _brush == null)
         {
@@ -109,6 +116,8 @@ public partial class TestPatternSurface : Surface
                 float luma = isA ? lumaA : lumaB;
                 _brush.Color = new Color4(luma, luma, luma);
 
+                // The + 1's are a little bit of overlap to account for rounding error; we don't constrain the grid
+                // size to be an even multiple of 8.
                 var rect = new Rect(col * cellWidth, row * cellHeight, cellWidth + 1, cellHeight + 1);
 
                 _d2dContext.FillRectangle(rect, _brush);
@@ -116,63 +125,29 @@ public partial class TestPatternSurface : Surface
         }
     }
 
-    private void DrawGammaRamp(int width, int height)
+    private void DrawGammaRamp(int width, int height, float scale)
     {
         var host = (CalibrationDisplay)this.host;
 
-        if (_d2dContext == null || _brush == null || host.DwriteFactory == null)
+        if (_d2dContext == null || _brush == null)
         {
             throw new InvalidOperationException("missing reference");
         }
 
-        uint dpi = PInvoke.GetDpiForWindow((HWND)host.Hwnd);
-        if (dpi <= 0)
-        {
-            return; // the app is shutting down.
-        }
-
-        var desktopIsHDR = Util.IsHdrEnabled(host.Hwnd).GetValueOrDefault(HdrMode);
-        string caption;
-        Func<float, float> gammaFunc;
-        Func<float, string> labelFunc;
-
-        if (HdrMode)
-        {
-            gammaFunc = enc => Util.PQCodeToNits((int)MathF.Round(enc)) * 0.0125f; // 1/80 nits
-            labelFunc = enc => $"{Util.PQCodeToNits((int)MathF.Round(enc)):G4}";
-            caption = desktopIsHDR ? "PQ EOTF" : "PQ EOTF (mapped onto monitor native gamma)";
-        }
-        else
-        {
-            gammaFunc = enc => enc / 255.0f;
-            labelFunc = enc => $"{(int)enc:X2}";
-            caption = desktopIsHDR ? "sRGB gamma" : "Monitor native gamma";
-        }
-
-        float cellWidth = width * 0.0625f; // 1/16
-        float scale = dpi / 96.0f;
-
-        using var textFormat = host.DwriteFactory.CreateTextFormat(
-            "Segoe UI",  // font family
-            null, // collection
-            fontWeight: FontWeight.Normal,
-            fontStyle: FontStyle.Normal,
-            fontStretch: FontStretch.Normal,
-            fontSize: 13.0f * scale,
-            localeName: "en-us"
-        );
-        textFormat.TextAlignment = TextAlignment.Center;
-        textFormat.ParagraphAlignment = ParagraphAlignment.Near;
-        using var textBrush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1, 0.70f)); // white, semi-transparent
+        GammaSetup(scale, host, out var caption, out var gammaFunc, out var labelFunc,
+            out var textFormat, out var textBrush);
 
         // Draw the ramp
+        float cellWidth = width * 0.0625f; // 1/16
         for (int col = 0; col < 16; col++)
         {
             float point = host.LuminosityA + (host.LuminosityB - host.LuminosityA) * col / 15.0f;
             float luma = gammaFunc(point);
             _brush.Color = new Color4(luma, luma, luma);
 
-            var rect = new Rect(col * cellWidth, 0, cellWidth + 1, height + 1);
+            // The + 1 is a little bit of overlap to account for rounding error; we don't constrain the image
+            // width to be an even multiple of 16.
+            var rect = new Rect(col * cellWidth, 0, cellWidth + 1, height);
 
             _d2dContext.FillRectangle(rect, _brush);
 
@@ -182,6 +157,76 @@ public partial class TestPatternSurface : Surface
 
         // main gamma curve caption
         DrawTextTop(caption, textFormat, textBrush, new Rect(0, 0, width, height));
+    }
+
+    private void DrawBandingTest(int width, int height, float scale)
+    {
+        var host = (CalibrationDisplay)this.host;
+
+        if (_d2dContext == null || _brush == null)
+        {
+            throw new InvalidOperationException("missing reference");
+        }
+
+        GammaSetup(scale, host, out var caption, out var gammaFunc, out var labelFunc,
+            out var textFormat, out var textBrush);
+
+        // D2D gradient fills don't support HDR, so roll our own.
+        for (int col = 0; col < width; col++)
+        {
+            float point = host.LuminosityA + (host.LuminosityB - host.LuminosityA) * col / (width - 1);
+            float luma = gammaFunc(point);
+            _brush.Color = new Color4(luma, luma, luma);
+
+            // precise device-dependent single-pixel width
+            var rect = new Rect(col, 0, 1, height);
+
+            _d2dContext.FillRectangle(rect, _brush);
+        }
+
+        // main gamma curve caption
+        DrawTextTop(caption, textFormat, textBrush, new Rect(0, 0, width, height));
+    }
+
+    // common setup shared by both DrawGammaRamp and DrawBandingTest
+    private void GammaSetup(float scale, CalibrationDisplay host, out string caption, out Func<float, float> gammaFunc,
+        out Func<float, string> labelFunc, out IDWriteTextFormat textFormat, out ID2D1SolidColorBrush textBrush)
+    {
+        if (host.DwriteFactory == null || _d2dContext == null)
+        {
+            throw new InvalidOperationException("missing reference");
+        }
+
+        var desktopIsHDR = Util.IsHdrEnabled(host.Hwnd).GetValueOrDefault(HdrMode);
+        if (HdrMode)
+        {
+            // `enc` is the raw slider value selected by user, [0..1023]
+            // use the floating point representation and don't round here; give 12-bit monitors a chance to shine in
+            // `DrawBandingTest`
+            gammaFunc = enc => Util.PQFloatToNits(enc / 1023.0f) * 0.0125f; // 1/80 nits
+            labelFunc = enc => $"{Util.PQFloatToNits(enc / 1023.0f):G4}";
+            caption = desktopIsHDR ? "PQ EOTF" : "PQ EOTF (mapped onto monitor native gamma)";
+        }
+        else
+        {
+            // `enc` is [0..255]
+            gammaFunc = enc => enc / 255.0f;
+            labelFunc = enc => $"{(int)enc:X2}";
+            caption = desktopIsHDR ? "sRGB gamma" : "Monitor native gamma";
+        }
+        textFormat = host.DwriteFactory.CreateTextFormat(
+                    "Segoe UI",  // font family
+                    null, // collection
+                    fontWeight: FontWeight.Normal,
+                    fontStyle: FontStyle.Normal,
+                    fontStretch: FontStretch.Normal,
+                    fontSize: 13.0f * scale,
+                    localeName: "en-us"
+                );
+        textFormat.TextAlignment = TextAlignment.Center;
+        textFormat.ParagraphAlignment = ParagraphAlignment.Near;
+        textBrush = _d2dContext.CreateSolidColorBrush(new Color4(1, 1, 1, 0.70f));
+        // white, semi-transparent
     }
 
     // draw text top-center within a bounding rect, and surrounded by a darker box for visibility

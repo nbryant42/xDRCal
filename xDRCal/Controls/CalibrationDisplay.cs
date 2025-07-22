@@ -252,6 +252,7 @@ public sealed partial class CalibrationDisplay : Panel, IDisposable, ISurfaceHos
 
             // dcomp setup
             _dcompDevice = DCompositionCreateDevice3<IDCompositionDesktopDevice>(dxgiDevice);
+            // Confusing wrapper name. Vortice is actually calling CreateTargetForHwnd under the covers:
             var dcompTarget = _dcompDevice.CreateSurfaceFromHwnd(Hwnd, true);
 
             _rootVisual = _dcompDevice.CreateVisual();

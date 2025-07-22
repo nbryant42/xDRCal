@@ -9,6 +9,5 @@ MonitorFromWindow
 GetMonitorInfo
 GetDisplayConfigBufferSizes
 EnumDisplayDevices
-GetNumberOfPhysicalMonitorsFromHMONITOR
 DISPLAY_DEVICE_ACTIVE
 EDD_GET_DEVICE_INTERFACE_NAME

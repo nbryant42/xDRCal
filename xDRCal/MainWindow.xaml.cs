@@ -55,6 +55,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void HdrToggle_Toggled(object sender, RoutedEventArgs e)
     {
+        var peak = Util.GetPeakPQ(WindowNative.GetWindowHandle(this));
+
         if (HdrToggle.IsOn)
         {
             if (CalibrationView.TestPatternSurface != null)
@@ -62,7 +64,7 @@ public sealed partial class MainWindow : Window, IDisposable
             SliderA.Maximum = 1023;
             SliderA.DisplayMode = SliderDisplayMode.Nits;
             SliderB.Maximum = 1023;
-            SliderB.Value = 1023;
+            SliderB.Value = peak;
             SliderB.DisplayMode = SliderDisplayMode.Nits;
         }
         else

@@ -2,8 +2,8 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.InteropServices;
+using Windows.Devices.Display.Core;
 using Windows.Win32;
 using Windows.Win32.Devices.Display;
 using Windows.Win32.Foundation;
@@ -15,44 +15,20 @@ namespace xDRCal;
 public partial class Util
 {
     /// <summary>
-    /// Due to legacy Windows design issues, this may fail to figure out which monitor the app is on, in which case
+    /// Due to legacy Windows design issues, this may fail to figure out which monitor the HWND is on, in which case
     /// it returns null. Otherwise, returns true or false.
     /// </summary>
     /// <param name="hwnd">HWND of a window on the monitor to check for HDR enablement</param>
     /// <returns>true, false, or null</returns>
     public static bool? IsHdrEnabled(IntPtr hwnd)
     {
-        // MonitorFromWindow seems to be a bit of a legacy function and possibly not the right path on modern Windows.
-        // The issue is that each HMONITOR can *sometimes* -- not always, and not very predictably -- be associated with
-        // multiple physical monitors, as documented at
-        // https://learn.microsoft.com/en-us/windows/win32/monitor/using-the-high-level-monitor-configuration-functions
-        //
-        // For now, we'll attempt to kludge through this as best we can, but the long-term solution might involve
-        // obtaining the desktop geometry (how?) and resolving manually based on more recent APIs.
-        var hMonitor = PInvoke.MonitorFromWindow((HWND)hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
-
-        if (PInvoke.GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out var pdwNumberOfPhysicalMonitors) &&
-            pdwNumberOfPhysicalMonitors > 1)
-        {
-            Debug.WriteLine($"pdwNumberOfPhysicalMonitors = {pdwNumberOfPhysicalMonitors}");
-        }
-
-        var mi = new MONITORINFOEX { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
-        if (!GetMonitorInfo(hMonitor, ref mi))
-        {
-            // can happen on shutdown
-            return null;
-        }
-
-        var dip = FindDeviceInterfacePath(mi.szDevice);
+        var dip = FindDeviceInterfacePath((HWND)hwnd);
 
         if (dip == null)
         {
             Debug.WriteLine("FindDeviceInterfacePath failed");
             return null;
         }
-
-        //Debug.WriteLine($"Mapped {mi.szDevice} to {dip}");
 
         if (!FindDisplayConfigIdForDevice(dip, out var adapterId, out var targetId))
         {
@@ -68,6 +44,89 @@ public partial class Util
         }
 
         return info2.HDRUserEnabled;
+    }
+
+    /// <summary>
+    /// Due to legacy Windows design issues, this may fail to figure out which monitor the HWND is on,
+    /// (or the monitor does not support HDR, etc) in which case it returns null.
+    /// 
+    /// The return value is based on the monitor EDID's MaxLuminanceInNits, which is often pretty far off the mark.
+    /// 
+    /// E.g. for my LG C9, MaxLuminanceInNits = 1499, MaxAverageFullFrameLuminanceInNits = 799, and the latter is a
+    /// better guide to where clipping occurs.
+    /// 
+    /// But the situation is reversed on my Samsung G65B; 603.698 and 351.276 respectively, with the former being a
+    /// a better match.
+    /// 
+    /// These numbers are sort of a rough guide (and not a very good one) to the usable signal level,
+    /// not the actual brightness, because of ABL.
+    /// 
+    /// TL;DR: game developers must present a calibration screen, because monitors lie, even in HGiG mode.
+    /// </summary>
+    /// <param name="hwnd">HWND of a window on the monitor</param>
+    /// <returns>peak luminance for the monitor or null</returns>
+    public static float? GetPeakNits(IntPtr hwnd)
+    {
+        var dip = FindDeviceInterfacePath((HWND)hwnd);
+
+        if (dip == null)
+        {
+            return null;
+        }
+
+        var manager = DisplayManager.Create(DisplayManagerOptions.None);
+        var targets = manager.GetCurrentTargets();
+
+        foreach (var target in targets)
+        {
+            if (!target.IsStale && target.DeviceInterfacePath == dip)
+            {
+                var monitor = target.TryGetMonitor();
+
+                if (monitor != null)
+                {
+                    return monitor.MaxLuminanceInNits;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // just defaults to 1023 (=10K nits!) if we can't figure out the monitor's real value.
+    // see GetPeakNits if you want to differentiate on nulls.
+    public static int GetPeakPQ(IntPtr hwnd)
+    {
+        var nits = GetPeakNits(hwnd);
+
+        return nits == null ? 1023 : NitsToPQCode((float)nits);
+    }
+
+    private static string? FindDeviceInterfacePath(HWND hwnd)
+    {
+        // MonitorFromWindow seems to be a bit of a legacy function and possibly not the right path on modern Windows.
+        // The issue is that each HMONITOR can *sometimes* -- not always, and not very predictably -- be associated with
+        // multiple physical monitors, as documented at
+        // https://learn.microsoft.com/en-us/windows/win32/monitor/using-the-high-level-monitor-configuration-functions
+        //
+        // For now, we'll attempt to kludge through this as best we can, but the long-term solution might involve
+        // obtaining the desktop geometry (how?) and resolving manually based on more recent APIs.
+        var hMonitor = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+
+        //if (PInvoke.GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out var pdwNumberOfPhysicalMonitors) &&
+        //    pdwNumberOfPhysicalMonitors > 1)
+        //{
+        //    Debug.WriteLine($"pdwNumberOfPhysicalMonitors = {pdwNumberOfPhysicalMonitors}");
+        //}
+
+        var mi = new MONITORINFOEX { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
+        if (!GetMonitorInfo(hMonitor, ref mi))
+        {
+            // can happen on shutdown
+            return null;
+        }
+
+        return FindDeviceInterfacePath(mi.szDevice);
     }
 
     private static IEnumerable<DISPLAY_DEVICEW> EnumDisplayDevices(string? adapterName = null, uint flags = 0)
@@ -172,20 +231,37 @@ public partial class Util
                 targetId = targetInfo.id;
                 return true;
             }
-            Debug.WriteLine($"{adapterName.monitorDevicePath} != {deviceName}");
+            //Debug.WriteLine($"{adapterName.monitorDevicePath} != {deviceName}");
         }
         return false;
     }
 
     public static float PQCodeToNits(int N)
     {
-        float Nn_pow = MathF.Pow(N / 1023.0f, 32.0f / 2523.0f);
+        return PQFloatToNits(N / 1023.0f);
+    }
+
+    public static float PQFloatToNits(float Nn)
+    {
+        float Nn_pow = MathF.Pow(Nn, 32.0f / 2523.0f);
 
         float numerator = Math.Max(Nn_pow - 107.0f / 128.0f, 0.0f);
         float denominator = 2413.0f / 128.0f - 2392.0f / 128.0f * Nn_pow;
 
         return MathF.Pow(numerator / denominator, 8192.0f / 1305.0f) * 10000.0f;
     }
+
+    public static int NitsToPQCode(float Fd)
+    {
+        var Ym1 = MathF.Pow(Fd / 10000.0f, 1305.0f / 8192.0f);
+
+        var numerator = (107.0f / 128.0f) + (2413.0f / 128.0f) * Ym1;
+        var denominator = 1.0f + (2392.0f / 128.0f) * Ym1;
+
+        return (int)MathF.Round(MathF.Pow(numerator / denominator, 2523.0f / 32.0f) * 1023.0f);
+    }
+
+
     public static float SrgbToLinear(float value)
     {
         if (value <= 0.04045f)
