@@ -78,6 +78,8 @@ Windows 11 SDK 10.0.26100.0 component as well.)
 
 ## Usage
 
+### Checkerboard test pattern (determines clipping points)
+
 Drag one slider to full black, and the other to almost black to see where it's possible to see detail. Do the opposite
 for the whites. Find the points where the checkerboard pattern is barely visible / just becomes invisible.
 
@@ -95,6 +97,21 @@ The bottom slider scales the test pattern by screen area percentage. Most HDR mo
 tasked to show bright whites on a smaller percentage of the screen. Note, however, that the "nits" readout in the app is
 only based on the signal we are sending to the monitor, and may not match the monitor's true capabilities, especially at
 100% of the display area.
+
+### Gamma ramp test pattern
+
+Flip to the right for a 16-bar gamma ramp. There are a few different ways this can work:
+
+| Desktop mode | App mode | Displayed Gamma Ramp                                                                 |
+| ------------ | -------- | ------------------------------------------------------------------------------------ |
+| SDR          | SDR      | Monitor native gamma (typically sRGB-ish for PC monitors, or Gamma 2.2-ish for TV's) |
+| SDR          | HDR      | PQ EOTF from 0-80 nits max (as distorted by monitor gamma if it deviates from sRGB)  |
+| HDR          | SDR      | sRGB piecewise transfer function (assuming monitor follows PQ accurately)            |
+| HDR          | HDR      | PQ EOTF as interpreted by the monitor (often inaccurately)                           |
+
+### Banding test pattern
+
+This is like the gamma ramp (see above), but continuous instead of 16-bars.
 
 ## See also
 
