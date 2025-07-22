@@ -1,6 +1,6 @@
 # xDRCal
 
-This is a small .NET application to help check the black or white luminosity clipping points of an SDR or HDR monitor.
+This is a small .NET application to generate black/white clipping, gamma, and banding test patterns for SDR/HDR monitors.
 
 ![Screenshot](https://github.com/nbryant42/xDRCal/blob/main/screenshot.png?raw=true)
 
