@@ -18,6 +18,11 @@ namespace xDRCal;
 /// </summary>
 public abstract class EOTF
 {
+    protected EOTF(string displayName)
+    {
+        DisplayName = displayName;
+    }
+
     /// <summary>
     /// Convert codepoint to linear nits
     /// </summary>
@@ -36,9 +41,16 @@ public abstract class EOTF
     public static readonly EOTF pq = new PQ();
     public static readonly EOTF sRGB = new SRGB();
     public static readonly EOTF gamma22 = new Gamma22();
+    public static readonly EOTF gamma24 = new Gamma24();
+
+    public string DisplayName { get; private set; }
 
     private class PQ : EOTF
     {
+        public PQ() : base("PQ")
+        {
+        }
+
         public override float ToCode(float nits)
         {
             var Ym1 = MathF.Pow(nits / 10000.0f, 1305.0f / 8192.0f);
@@ -62,6 +74,10 @@ public abstract class EOTF
 
     private class SRGB : EOTF
     {
+        public SRGB() : base("sRGB (extended)")
+        {
+        }
+
         public override float ToCode(float nits)
         {
             var R = nits * 0.0125f;
@@ -80,6 +96,10 @@ public abstract class EOTF
     // maximum value as (1023/255)^2.2 * 80 = ~1700 nits.
     private class Gamma22 : EOTF
     {
+        public Gamma22() : base("Gamma 2.2 (extended)")
+        {
+        }
+
         public override float ToCode(float nits)
         {
             return MathF.Pow(nits * 0.0125f, 1.0f / 2.2f) * 255.0f;
@@ -90,4 +110,22 @@ public abstract class EOTF
             return MathF.Pow(signal / 255.0f, 2.2f) * 80.0f;
         }
     }
+
+    private class Gamma24 : EOTF
+    {
+        public Gamma24() : base("Gamma 2.4 (extended)")
+        {
+        }
+
+        public override float ToCode(float nits)
+        {
+            return MathF.Pow(nits * 0.0125f, 1.0f / 2.4f) * 255.0f;
+        }
+
+        public override float ToNits(float signal)
+        {
+            return MathF.Pow(signal / 255.0f, 2.4f) * 80.0f;
+        }
+    }
+
 }

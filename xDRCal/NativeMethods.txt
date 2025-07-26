@@ -1,13 +1,6 @@
-﻿GetDpiForWindow
-SetWindowLongPtr
-SetCursor
-LoadCursor
-CallWindowProc
-EnumChildWindows
-GetClassName
-MonitorFromWindow
-GetMonitorInfo
+﻿MonitorFromWindow
 GetDisplayConfigBufferSizes
 EnumDisplayDevices
 DISPLAY_DEVICE_ACTIVE
 EDD_GET_DEVICE_INTERFACE_NAME
+RECT

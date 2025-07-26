@@ -5,21 +5,15 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using System;
-using System.Diagnostics;
 using System.Linq;
-using Vortice.Mathematics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using WinRT.Interop;
 using xDRCal.Controls;
-using xDRCal.Visuals;
-
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
 
 namespace xDRCal;
 
-public sealed partial class MainWindow : Window, IDisposable
+public sealed partial class MainWindow : Window
 {
     private readonly AppWindow appWindow;
 
@@ -28,18 +22,16 @@ public sealed partial class MainWindow : Window, IDisposable
         InitializeComponent();
         SliderA.EOTFComboBox = EOTFComboBox;
         SliderB.EOTFComboBox = EOTFComboBox;
-        CalibrationView.EOTFComboBox = EOTFComboBox;
         ComboBoxItem_PQ.Tag = EOTF.pq;
         ComboBoxItem_sRGB.Tag = EOTF.sRGB;
         ComboBoxItem_Gamma22.Tag = EOTF.gamma22;
+        ComboBoxItem_Gamma24.Tag = EOTF.gamma24;
 
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         appWindow = AppWindow.GetFromWindowId(windowId);
 
-        RootGrid.SizeChanged += (_, _) => { UpdateCalibrationScale(); PositionLRButtons(); };
-
-        CalibrationView.Initialize(hwnd);
+        RootGrid.SizeChanged += (_, _) => UpdateCalibrationScale();
     }
 
     private void FullscreenAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -75,11 +67,11 @@ public sealed partial class MainWindow : Window, IDisposable
     private void UpdateHDRSettings(EOTF? previousEOTF)
     {
         EOTFComboBox.IsEnabled = HdrToggle.IsOn;
+        TestPattern.Eotf = (EOTF)((ComboBoxItem)EOTFComboBox.SelectedValue).Tag;
 
         if (HdrToggle.IsOn)
         {
-            if (CalibrationView.TestPatternSurface != null)
-                CalibrationView.TestPatternSurface.HdrMode = true;
+            TestPattern.HdrMode = true;
 
             if (SliderA != null)
             {
@@ -102,8 +94,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         else
         {
-            if (CalibrationView.TestPatternSurface != null)
-                CalibrationView.TestPatternSurface.HdrMode = false;
+            TestPattern.HdrMode = false;
 
             if (SliderA != null)
             {
@@ -117,6 +108,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 SliderB.DisplayMode = SliderDisplayMode.Hex;
             }
         }
+        TestPattern.Render();
     }
 
     private void Recalc(SliderWithValueBox slider, EOTF previousEOTF)
@@ -129,7 +121,6 @@ public sealed partial class MainWindow : Window, IDisposable
     private void Window_SizeChanged(object sender, WindowSizeChangedEventArgs e)
     {
         UpdateCalibrationScale();
-        PositionLRButtons();
     }
 
     private void SizeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -137,77 +128,37 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateCalibrationScale();
     }
 
-    private void PositionLRButtons()
-    {
-        // intermediate calculations in float
-        uint dpi = PInvoke.GetDpiForWindow((HWND)WindowNative.GetWindowHandle(this));
-        float scale = dpi / 96.0f;
-        float availableWidth = (int)Phys(scale, CalibrationView.ActualWidth);
-        float availableHeight = (int)Phys(scale, CalibrationView.ActualHeight);
-
-        // final outputs as integers
-        int size = (int)Phys(scale, 24.0);
-        int offset = (int)Phys(scale, 16.0);
-        int y = (int)MathF.Round(0.5f * (availableHeight - size));
-
-        RectI pos1 = new(offset, y, size, size);
-        RectI pos2 = new((int)MathF.Round(availableWidth - size - offset), y, size, size);
-
-        CalibrationView.LeftBtnSurface?.Reposition(pos1);
-        CalibrationView.RightBtnSurface?.Reposition(pos2);
-    }
-
     private void UpdateCalibrationScale()
     {
-        // intermediate calculations in float
-        uint dpi = PInvoke.GetDpiForWindow((HWND)WindowNative.GetWindowHandle(this));
-        float scale = dpi / 96.0f;
-
-        float frac = (float)SizeSlider.Value / 100.0f;
-        float windowWidth = Phys(scale, RootGrid.ActualWidth);
-        float windowHeight = Phys(scale, RootGrid.ActualHeight);
-        float availableWidth = Phys(scale, CalibrationView.ActualWidth);
-        float availableHeight = Phys(scale, CalibrationView.ActualHeight);
-        float shortEdge = Math.Min(availableWidth, availableHeight);
-        float totalArea = windowWidth * windowHeight;
-        float targetArea = totalArea * frac;
-
-        // final outputs as integers
-        int width, height;
+        // These are device-independent pixels, so all calculations must be floating point.
+        float availableWidth = (float)BoundingGrid.ActualWidth;
+        float availableHeight = (float)BoundingGrid.ActualHeight;
+        float targetArea = (float)(RootGrid.ActualWidth * RootGrid.ActualHeight * SizeSlider.Value / 100.0);
+        float width, height;
 
         // Calculate the edge length if the display were square.
-        int square = Round(MathF.Sqrt(targetArea));
+        float square = MathF.Sqrt(targetArea);
 
         // Either the square fits inside the shorter edge, or we scale one dimension to match the desired area.
-        if (square <= shortEdge)
+        if (square <= Math.Min(availableWidth, availableHeight))
         {
             width = height = square;
         }
         else if (availableWidth > availableHeight)
         {
-            width = (int)Math.Min(Round(targetArea / availableHeight), availableWidth);
-            height = (int)availableHeight;
+            width = Math.Min(targetArea / availableHeight, availableWidth);
+            height = availableHeight;
         }
         else
         {
             width = (int)availableWidth;
-            height = (int)Math.Min(Round(targetArea / availableWidth), availableHeight);
+            height = (int)Math.Min(targetArea / availableWidth, availableHeight);
         }
 
         if (width > 0 && height > 0)
         {
-            width = width / 2 * 2; // constrain to even width - keep center centered to avoid flicker
-            height = height / 2 * 2;
-
-            int x = ((int)availableWidth - width) / 2;
-            int y = ((int)availableHeight - height) / 2;
-
-            // add a border as workaround for Windows SDR clamping behavior
-            int border = Math.Max(0, Surface.MIN_SIZE - Math.Min(width, height)) / 2;
-
-            RectI pos = new(x - border, y - border, width + border * 2, height + border * 2);
-
-            CalibrationView.TestPatternSurface?.Reposition(pos, border);
+            TestPattern.Width = width;
+            TestPattern.Height = height;
         }
     }
 
@@ -223,12 +174,26 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void ValueSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
-        CalibrationView.LuminosityA = (short)SliderA.Value;
-        CalibrationView.LuminosityB = (short)SliderB.Value;
+        TestPattern.LuminosityA = (short)SliderA.Value;
+        TestPattern.LuminosityB = (short)SliderB.Value;
+        TestPattern.Render();
     }
 
-    public void Dispose()
+    private void LeftButton_Clicked(object sender, RoutedEventArgs e)
     {
-        CalibrationView.Dispose();
+        TestPattern.Page = Math.Max(TestPattern.Page - 1, 0);
+        LeftButton.Visibility = TestPattern.Page == 0 ? Visibility.Collapsed : Visibility.Visible;
+        RightButton.Visibility = TestPattern.Page == TestPattern.MaxPage ?
+            Visibility.Collapsed : Visibility.Visible;
+        TestPattern.Render();
+    }
+
+    private void RightButton_Clicked(object sender, RoutedEventArgs e)
+    {
+        TestPattern.Page = Math.Min(TestPattern.Page + 1, TestPattern.MaxPage);
+        LeftButton.Visibility = TestPattern.Page == 0 ? Visibility.Collapsed : Visibility.Visible;
+        RightButton.Visibility = TestPattern.Page == TestPattern.MaxPage ?
+            Visibility.Collapsed : Visibility.Visible;
+        TestPattern.Render();
     }
 }

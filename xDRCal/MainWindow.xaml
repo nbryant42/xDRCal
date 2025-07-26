@@ -27,7 +27,29 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <controls:CalibrationDisplay x:Name="CalibrationView" Grid.Row="0"/>
+        <Grid Grid.Row="0" x:Name="BoundingGrid">
+            <controls:TestPatternSurface x:Name="TestPattern" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+            <!-- Unicode chevron. FlipView is a bit difficult to work with here, so for now we'll do this. -->
+            <Button
+                x:Name="LeftButton"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                Margin="8,0,0,0"
+                Content="&#x276E;"
+                Background="#FF171717"
+                Click="LeftButton_Clicked"
+                Visibility="Collapsed"/>
+
+            <Button
+                x:Name="RightButton"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                Margin="0,0,8,0"
+                Content="&#x276F;"
+                Background="#FF171717"
+                Click="RightButton_Clicked"/>
+        </Grid>
 
         <StackPanel x:Name="Controls" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center"
                     VerticalAlignment="Bottom" Background="#FF171717" BorderThickness="4,4,4,0" CornerRadius="6"
@@ -72,6 +94,7 @@
                     <ComboBoxItem x:Name="ComboBoxItem_PQ">PQ</ComboBoxItem>
                     <ComboBoxItem x:Name="ComboBoxItem_sRGB">sRGB (extended)</ComboBoxItem>
                     <ComboBoxItem x:Name="ComboBoxItem_Gamma22">Gamma 2.2 (extended)</ComboBoxItem>
+                    <ComboBoxItem x:Name="ComboBoxItem_Gamma24">Gamma 2.4 (extended)</ComboBoxItem>
                 </ComboBox>
             </Grid>
 

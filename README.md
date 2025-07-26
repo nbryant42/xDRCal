@@ -3,9 +3,9 @@
 This is a small .NET application to generate black/white clipping, gamma, and banding test patterns for SDR/HDR
 monitors.
 
-I mainly built this as an exploratory project to test out Direct2D HDR composition in a WinUI 3 setting; see
-[Developer Notes](#developer-notes) for all the gory details of the swapchain and composition API fighting that have
-plagued this project.
+I mainly built this as an exploratory project to test out Direct2D HDR composition in a WinUI 3 setting. The learning
+curve can be pretty steep; see [Developer Notes](#developer-notes) for all the gory details of the swap-chain and
+composition API fighting that initially caused trouble.
 
 ![Screenshot](https://github.com/nbryant42/xDRCal/blob/main/screenshot.png?raw=true)
 
@@ -96,7 +96,7 @@ https://github.com/dylanraga/win11hdr-srgb-to-gamma2.2-icm for a manual workarou
 
 ## Developer Notes
 
-As of Windows 11 24H2, Windows and WinUI 3 both have a number of platform limitations related to swap chains in general
+As of Windows 11 24H2, Windows and WinUI 3 both have a number of subtle gotchas related to swap chains in general
 and HDR surfaces in particular.
 
 - **IDXGISwapChain3.SetColorSpace1 can be unreliable:**  
@@ -117,34 +117,10 @@ of unavoidable flicker.)
 - **Consider calling `Present` multiple times on resize:**  
 In this app, calling my `Render()` function 3 times (for a 2-buffer swap-chain) reduces resize flicker to almost zero.
 The 3rd `Present` is more likely to block, helping to guarantee the swapchain is ready to pass to `Commit`.
-- **Consider avoiding [SwapChainPanel](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.swapchainpanel):**  
-`SwapChainPanel` can be hard to synchronize with XAML layout, and layering UI over `SwapChainPanel` is unreliable because
-it presents directly to the window surface. See also
-[#6919](https://github.com/microsoft/microsoft-ui-xaml/issues/6919).
-Would the two-swap-chain trick have worked with `SwapChainPanel`? I'm not sure, but it seems better to have direct
-control over `Commit`.
-- **Use classic DirectComposition (DComp) for HDR surfaces as overlays:**  
-Any `SwapChainPanel` issues can be sidestepped by presenting via
-[classic DComp](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondesktopdevice-createsurfacefromhwnd).
-- **Input/event caveats for overlays:**  
-If you overlay an `HWND` or DComp visual above your UI, ensure you handle input correctly (e.g., by punching a transparent
-hole in the overlay), or input may not reach your controls. Even opaque DComp overlays may require manually setting the
-mouse pointer style.
-- **Transparency not supported for HDR surfaces:**  
-As soon as you set an alpha mode other than Ignore, an HDR surface either returns invalid parameter or clamps to SDR.
-So you cannot "punch holes in it" via transparency for controls layered below to show through.
-- **Not possible to get layered surfaces via custom SpriteVisual:**  
-[ICompositionDrawingSurfaceInterop::BeginDraw](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/win32/microsoft.ui.composition.interop/nf-microsoft-ui-composition-interop-icompositiondrawingsurfaceinterop-begindraw)
-is unsupported, unlike UWP (access is blocked), and the
-[CreateCompositionSurfaceForSwapChain](https://learn.microsoft.com/en-us/windows/win32/api/windows.ui.composition.interop/nn-windows-ui-composition-interop-icompositorinterop)
-API that existed in UWP was removed from WinUI 3.
-- **Not possible to get layered surfaces via child `HWND` (without XAML Islands):**  
-WinUI 3 renders into a child window, but attempts to layer HDR below this will fail
-(it occupies the whole client area, and doesn't use
-[WS_EX_LAYERED](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles)). That's not the case in
-[XAML Islands](https://github.com/microsoft/WindowsAppSDK-Samples/tree/main/Samples/Islands) mode, but that mode has
-tradeoffs, at least in terms of packaging, deployment, and boilerplate.
-- **HDR swap-chains sometimes seem to require a minimum size and refresh rate:**  
-DWM can sometimes downgrade HDR swap-chains to SDR if their size drops below a certain threshold (e.g., 274x274 px @
-96dpi), or if you present at less than ~24Hz. (This issue previously occurred in this codebase, but no longer does after
-recent updates; unclear why. It's a Windows mystery. Figure it out and I might buy you a beer.)
+- **[SwapChainPanel](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.swapchainpanel)
+setup is sequence/timing dependent and prone to race conditions:**    
+Do not call [ISwapChainPanelNative.SetSwapChain](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/win32/microsoft.ui.xaml.media.dxinterop/nf-microsoft-ui-xaml-media-dxinterop-iswapchainpanelnative-setswapchain)
+until your swap-chain is fully presented. (May require multiple Present calls, as discussed above. `SwapChainPanel` is
+committing to a DComp surface under the covers.) It might work fine for SDR surfaces, but HDR surfaces will behave very
+strangely and misleadingly. If you see HDR surfaces that appear to "clamp" to SDR, or find that you need to force things
+with a game-style render loop, this is probably the cause.

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.Arm;
 using Windows.Devices.Display.Core;
 using Windows.Win32;
 using Windows.Win32.Devices.Display;
@@ -23,6 +22,10 @@ public partial class Util
     /// <returns>true, false, or null</returns>
     public static bool? IsHdrEnabled(IntPtr hwnd)
     {
+        if (hwnd == IntPtr.Zero)
+        {
+            return null;
+        }
         var dip = FindDeviceInterfacePath((HWND)hwnd);
 
         return dip == null ? null : IsHdrEnabled(dip);
