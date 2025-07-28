@@ -1,4 +1,5 @@
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -6,8 +7,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using System;
 using System.Linq;
-using Windows.Win32;
-using Windows.Win32.Foundation;
+using Windows.Storage.Pickers;
 using WinRT.Interop;
 using xDRCal.Controls;
 
@@ -16,6 +16,7 @@ namespace xDRCal;
 public sealed partial class MainWindow : Window
 {
     private readonly AppWindow appWindow;
+    private DispatcherQueueTimer debounce;
 
     public MainWindow()
     {
@@ -31,7 +32,15 @@ public sealed partial class MainWindow : Window
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         appWindow = AppWindow.GetFromWindowId(windowId);
 
+        TestPattern.Hwnd = hwnd;
+
         RootGrid.SizeChanged += (_, _) => UpdateCalibrationScale();
+        BoundingGrid.SizeChanged += (_, _) => UpdateCalibrationScale();
+
+        debounce = DispatcherQueue.CreateTimer();
+        debounce.Tick += (_, _) => { TestPattern.InvalidateBitmap(); TestPattern.Render(); };
+        debounce.IsRepeating = false;
+        debounce.Interval = TimeSpan.FromMilliseconds(500);
     }
 
     private void FullscreenAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -67,12 +76,12 @@ public sealed partial class MainWindow : Window
     private void UpdateHDRSettings(EOTF? previousEOTF)
     {
         EOTFComboBox.IsEnabled = HdrToggle.IsOn;
-        TestPattern.Eotf = (EOTF)((ComboBoxItem)EOTFComboBox.SelectedValue).Tag;
+        var newEotf = (EOTF)((ComboBoxItem)EOTFComboBox.SelectedValue).Tag;
+        if (newEotf != null)
+            TestPattern.Eotf = newEotf;
 
         if (HdrToggle.IsOn)
         {
-            TestPattern.HdrMode = true;
-
             if (SliderA != null)
             {
                 SliderA.Maximum = 1023;
@@ -91,11 +100,10 @@ public sealed partial class MainWindow : Window
                 else
                     Recalc(SliderB, previousEOTF);
             }
+            TestPattern.HdrMode = true; // set this last due to its own internal setter logic
         }
         else
         {
-            TestPattern.HdrMode = false;
-
             if (SliderA != null)
             {
                 SliderA.Maximum = 255;
@@ -107,6 +115,7 @@ public sealed partial class MainWindow : Window
                 SliderB.Maximum = 255;
                 SliderB.DisplayMode = SliderDisplayMode.Hex;
             }
+            TestPattern.HdrMode = false; // set this last due to its own internal setter logic
         }
         TestPattern.Render();
     }
@@ -162,38 +171,59 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static int Round(float f)
-    {
-        return (int)MathF.Round(f);
-    }
-
-    private static float Phys(float scale, double dip)
-    {
-        return MathF.Round((float)dip * scale);
-    }
-
     private void ValueSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         TestPattern.LuminosityA = (short)SliderA.Value;
+        if (TestPattern.HdrMode && TestPattern.LuminosityB != (short)SliderB.Value)
+        {
+            debounce.Stop();
+            debounce.Start();
+        }
         TestPattern.LuminosityB = (short)SliderB.Value;
         TestPattern.Render();
     }
 
     private void LeftButton_Clicked(object sender, RoutedEventArgs e)
     {
-        TestPattern.Page = Math.Max(TestPattern.Page - 1, 0);
-        LeftButton.Visibility = TestPattern.Page == 0 ? Visibility.Collapsed : Visibility.Visible;
-        RightButton.Visibility = TestPattern.Page == TestPattern.MaxPage ?
-            Visibility.Collapsed : Visibility.Visible;
-        TestPattern.Render();
+        SetPage(Math.Max(TestPattern.Page - 1, 0));
     }
 
     private void RightButton_Clicked(object sender, RoutedEventArgs e)
     {
-        TestPattern.Page = Math.Min(TestPattern.Page + 1, TestPattern.MaxPage);
+        SetPage(Math.Min(TestPattern.Page + 1, TestPattern.MaxPage));
+    }
+    private void SetPage(int p)
+    {
+        TestPattern.Page = p;
         LeftButton.Visibility = TestPattern.Page == 0 ? Visibility.Collapsed : Visibility.Visible;
         RightButton.Visibility = TestPattern.Page == TestPattern.MaxPage ?
             Visibility.Collapsed : Visibility.Visible;
+        if (p == 3)
+        {
+            SliderA.Visibility = Visibility.Collapsed;
+            OpenButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            SliderA.Visibility = Visibility.Visible;
+            OpenButton.Visibility = Visibility.Collapsed;
+        }
         TestPattern.Render();
+    }
+
+    private async void OpenButton_Clicked(object sender, RoutedEventArgs e)
+    {
+        var picker = new FileOpenPicker();
+        InitializeWithWindow.Initialize(picker, TestPattern.Hwnd);
+
+        picker.SuggestedStartLocation = PickerLocationId.PicturesLibrary;
+        picker.FileTypeFilter.Add(".jpg");
+        picker.FileTypeFilter.Add(".jpeg");
+
+        var file = await picker.PickSingleFileAsync();
+        if (file != null)
+        {
+            TestPattern.LoadImage(file);
+        }
     }
 }

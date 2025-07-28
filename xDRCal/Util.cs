@@ -49,6 +49,29 @@ public partial class Util
         return info2.HDRUserEnabled;
     }
 
+    public static float GetSdrWhiteLevel(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return 1.0f;
+        }
+        var dip = FindDeviceInterfacePath((HWND)hwnd);
+
+        return dip == null ? 1.0f : GetSdrWhiteLevel(dip);
+    }
+
+    public static float GetSdrWhiteLevel(string dip)
+    {
+        if (!FindDisplayConfigIdForDevice(dip, out var adapterId, out var targetId))
+        {
+            Debug.WriteLine($"FindDisplayConfigIdForDevice failed: {dip}");
+            return 1.0f;
+        }
+
+        return GetSdrWhiteLevel(adapterId, targetId);
+    }
+
+
     /// <summary>
     /// Due to legacy Windows design issues, this may fail to figure out which monitor the HWND is on,
     /// (or the monitor does not support HDR, etc) in which case it returns null.
@@ -110,7 +133,7 @@ public partial class Util
         }
     }
 
-    private static string? FindDeviceInterfacePath(HWND hwnd)
+    public static string? FindDeviceInterfacePath(IntPtr hwnd)
     {
         // MonitorFromWindow seems to be a bit of a legacy function and possibly not the right path on modern Windows.
         // The issue is that each HMONITOR can *sometimes* -- not always, and not very predictably -- be associated with
@@ -119,7 +142,7 @@ public partial class Util
         //
         // For now, we'll attempt to kludge through this as best we can, but the long-term solution might involve
         // obtaining the desktop geometry (how?) and resolving manually based on more recent APIs.
-        var hMonitor = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        var hMonitor = PInvoke.MonitorFromWindow((HWND)hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
 
         //if (PInvoke.GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out var pdwNumberOfPhysicalMonitors) &&
         //    pdwNumberOfPhysicalMonitors > 1)
@@ -263,6 +286,25 @@ public partial class Util
         return DisplayConfigGetDeviceInfo(ref info2);
     }
 
+    // returns value scaled as a multiplier, e.g. if the desktop white level is 80 nits, returns 1.0f.
+    public static float GetSdrWhiteLevel(LUID adapterId, uint targetId)
+    {
+        var info2 = new DISPLAYCONFIG_SDR_WHITE_LEVEL();
+        info2.header.type = DISPLAYCONFIG_DEVICE_INFO_TYPE.GET_SDR_WHITE_LEVEL;
+        info2.header.size = (uint)Marshal.SizeOf<DISPLAYCONFIG_SDR_WHITE_LEVEL>();
+        info2.header.adapterId = adapterId;
+        info2.header.id = targetId;
+
+        var hr = DisplayConfigGetDeviceInfo(ref info2);
+        if (hr != 0)
+        {
+            Debug.WriteLine($"DisplayConfigGetDeviceInfo failed: {hr}");
+            return 1.0f;
+        }
+
+        return info2.SDRWhiteLevel / 1000.0f;
+    }
+
     // return true if found
     public static bool GetFirstActiveDisplayId(out LUID adapterId, out uint targetId)
     {
@@ -299,6 +341,8 @@ public partial class Util
     private static extern long DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2 requestPacket);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern long DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_TARGET_DEVICE_NAME requestPacket);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern long DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_SDR_WHITE_LEVEL requestPacket);
 
     // CsWin32's stub for this uses pointers.
     [DllImport("user32.dll", SetLastError = true)]

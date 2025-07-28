@@ -4,3 +4,5 @@ xDRCal/obj/
 xDRCal/bin/
 xDRCalTests/obj/
 xDRCalTests/bin/
+extern/libultrahdr/
+extern/out/

@@ -16,6 +16,12 @@
 	<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 	<WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Remove="Assets\Grand_P3_4k_HDR-9714.jpg" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="Assets\Grand_P3_4k_HDR-9714.jpg" />
+  </ItemGroup>
 
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
@@ -25,6 +31,10 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Grand_P3_4k_HDR-9714.jpg" />
   </ItemGroup>
 
   <ItemGroup>
@@ -68,4 +78,15 @@
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
     <SupportedOSPlatformVersion>10.0.26100.0</SupportedOSPlatformVersion>
   </PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\extern\out\build\x64-Release\libultrahdr\uhdr.dll" CopyToPublishDirectory="Always" />
+	</ItemGroup>
+  <Target Name="CopyUltraHdrDll" AfterTargets="Build">
+    <PropertyGroup>
+	    <_UltraHdrDllPath Condition="'$(Configuration)' == 'Release'">..\extern\out\build\x64-Release\libultrahdr\uhdr.dll</_UltraHdrDllPath>
+	    <_UltraHdrDllPath Condition="'$(Configuration)' == 'Debug'">..\extern\out\build\x64-Debug\libultrahdr\uhdr.dll</_UltraHdrDllPath>
+    </PropertyGroup>
+    <Copy SourceFiles="$(_UltraHdrDllPath)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

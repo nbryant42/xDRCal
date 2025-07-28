@@ -1,7 +1,7 @@
 # xDRCal
 
 This is a small .NET application to generate black/white clipping, gamma, and banding test patterns for SDR/HDR
-monitors.
+monitors and view gain-mapped UltraHDR JPEGs with brightness preview.
 
 I mainly built this as an exploratory project to test out Direct2D HDR composition in a WinUI 3 setting. The learning
 curve can be pretty steep; see [Developer Notes](#developer-notes) for all the gory details of the swap-chain and
@@ -18,16 +18,17 @@ it.
 
 ## Building
 
-Install Visual Studio and the relevant workloads.
+Install Visual Studio and the relevant workloads. At minimum, the C++ desktop workload, the .NET workload, and the
+Windows 11 SDK 10.0.26100.
 
 See here: https://learn.microsoft.com/en-us/windows/apps/get-started/start-here?tabs=vs-2022-17-10
 
-(I believe this document may neglect to mention that you also need the .NET workload, and you will definitely need the
-Windows 11 SDK 10.0.26100.0 component as well.)
+Building is currently a slightly manual two-step process. First select the CMake targets view in Solution Explorer and
+build the uhdr.dll target. Then you can switch back to the normal VS solution and build the app.
 
 ## Usage
 
-### Checkerboard test pattern (determines clipping points)
+### Checkerboard test pattern (determines clipping points) (page 1)
 
 Drag one slider to full black, and the other to almost black to see where it's possible to see detail. Do the opposite
 for the whites. Find the points where the checkerboard pattern is barely visible / just becomes invisible.
@@ -47,7 +48,7 @@ tasked to show bright whites on a smaller percentage of the screen. Note, howeve
 only based on the signal we are sending to the monitor, and may not match the monitor's true capabilities, especially at
 100% of the display area.
 
-### Gamma ramp test pattern
+### Gamma ramp test pattern (page 2)
 
 Flip to the right for a 16-bar gamma ramp. There are a few different ways this can work:
 
@@ -67,16 +68,25 @@ expected for TVs that follow Gamma 2.2, but not typical for PC monitors.)
 * The Full/Limited dynamic range setting is mismatched between the PC and the display. (This can be set in the Nvidia
 control panel, etc.)
 
-### Banding test pattern
+### Banding test pattern (page 3)
 
 This works similarly to the gamma ramp (see above), but renders a continuous gradient. You may find that monitors show
 the least banding when operating in 10- or 12-bit WCG (non-HDR) mode; this may be the closest thing to "native" level
 control.
 
+### UltraHDR JPEG viewer (page 4)
+
+This screen displays a sample UltraHDR JPEG (with a gain map) or loads one from disk, and allows to compare the SDR and
+HDR rendition. On this page, the luminosity slider controls the "max gain" parameter to
+[libultrahdr](https://github.com/google/libultrahdr), and can be used to preview the appearance on lower-spec HDR
+monitors, e.g. an image mastered for an HDR600 display can be previewed as it might appear on HDR400. (The brightness
+change can be a bit slow because it's currently implemented by re-decoding the JPEG.)
+
 ### "HDR mode"
 
-This really just selects the pixel format the app uses to present; either 8-bit nonlinear BGR or 16-bit floating point
-scRGB.
+This really just selects the pixel format the app uses to present, either 8-bit nonlinear BGR or 16-bit floating point
+scRGB. It does not change the Windows desktop mode (hit Win-Alt-B for that.) Note that full color management for
+UltraHDR JPEG is not yet implemented when HDR mode is turned off.
 
 ### EOTF selection
 
