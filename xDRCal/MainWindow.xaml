@@ -112,6 +112,9 @@
                                                 ValueChanged="SizeSlider_ValueChanged"
                                                 DisplayMode="Percent" />
             </StackPanel>
+
+            <Button x:Name="OpenButton" VerticalAlignment="Center" Content="&#x1F4C1;" Visibility="Collapsed"
+                    Click="OpenButton_Clicked"/>
         </StackPanel>
     </Grid>
 </Window>

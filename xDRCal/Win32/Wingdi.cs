@@ -163,6 +163,12 @@ public enum DISPLAYCONFIG_ADVANCED_COLOR_MODE : uint
     HDR = 2  // Advanced color (FP16 scRGB), scene-referred color/luminance
 }
 
+[StructLayout(LayoutKind.Sequential)]
+public struct DISPLAYCONFIG_SDR_WHITE_LEVEL
+{
+    public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+    public uint SDRWhiteLevel; // ULONG is uint on Windows
+}
 
 [StructLayout(LayoutKind.Sequential)]
 public struct DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2

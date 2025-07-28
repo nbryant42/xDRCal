@@ -44,7 +44,7 @@ public abstract partial class Surface : SwapChainPanel, IDisposable
         Unloaded += (_, _) => Dispose();
     }
 
-    public void Dispose()
+    public virtual void Dispose()
     {
         _swapChain?.Dispose();
         _swapChain = null;
@@ -75,6 +75,7 @@ public abstract partial class Surface : SwapChainPanel, IDisposable
             if (hdrMode != value)
             {
                 hdrMode = value;
+                InvalidateBitmap();
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
                 // fire-and-forget should be fine here.
                 ResizeRenderTarget();
@@ -82,6 +83,8 @@ public abstract partial class Surface : SwapChainPanel, IDisposable
             }
         }
     }
+
+    public virtual void InvalidateBitmap() { }
 
     private async void InitializeDirectX()
     {
@@ -224,7 +227,7 @@ public abstract partial class Surface : SwapChainPanel, IDisposable
 
         // get buffer count (Windows may override our request)
         var count = _swapChain.Description1.BufferCount;
-        // if 2 buffers, render 3X; third is more likely to block, helping with .Commit() sync.
+        // if 2 buffers, render 3X; third is more likely to block, helping with .SetSwapChain() sync.
         for (var i = 0; i <= count; i++)
         {
             Render();
