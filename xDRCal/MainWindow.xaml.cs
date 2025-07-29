@@ -1,5 +1,4 @@
 using Microsoft.UI;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -16,7 +15,6 @@ namespace xDRCal;
 public sealed partial class MainWindow : Window
 {
     private readonly AppWindow appWindow;
-    private DispatcherQueueTimer debounce;
 
     public MainWindow()
     {
@@ -36,11 +34,6 @@ public sealed partial class MainWindow : Window
 
         RootGrid.SizeChanged += (_, _) => UpdateCalibrationScale();
         BoundingGrid.SizeChanged += (_, _) => UpdateCalibrationScale();
-
-        debounce = DispatcherQueue.CreateTimer();
-        debounce.Tick += (_, _) => { TestPattern.InvalidateBitmap(); TestPattern.Render(); };
-        debounce.IsRepeating = false;
-        debounce.Interval = TimeSpan.FromMilliseconds(500);
     }
 
     private void FullscreenAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -82,6 +75,8 @@ public sealed partial class MainWindow : Window
 
         if (HdrToggle.IsOn)
         {
+            TestPattern.HdrMode = true; // set this first so slider value change handler sees it
+
             if (SliderA != null)
             {
                 SliderA.Maximum = 1023;
@@ -100,10 +95,11 @@ public sealed partial class MainWindow : Window
                 else
                     Recalc(SliderB, previousEOTF);
             }
-            TestPattern.HdrMode = true; // set this last due to its own internal setter logic
         }
         else
         {
+            TestPattern.HdrMode = false; // set this first so slider value change handler sees it
+
             if (SliderA != null)
             {
                 SliderA.Maximum = 255;
@@ -115,9 +111,9 @@ public sealed partial class MainWindow : Window
                 SliderB.Maximum = 255;
                 SliderB.DisplayMode = SliderDisplayMode.Hex;
             }
-            TestPattern.HdrMode = false; // set this last due to its own internal setter logic
         }
-        TestPattern.Render();
+
+        TestPattern.ResizeRenderTarget();
     }
 
     private void Recalc(SliderWithValueBox slider, EOTF previousEOTF)
@@ -174,12 +170,14 @@ public sealed partial class MainWindow : Window
     private void ValueSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         TestPattern.LuminosityA = (short)SliderA.Value;
-        if (TestPattern.HdrMode && TestPattern.LuminosityB != (short)SliderB.Value)
+        if (TestPattern.LuminosityB != (short)SliderB.Value)
         {
-            debounce.Stop();
-            debounce.Start();
+            TestPattern.LuminosityB = (short)SliderB.Value;
+            if (TestPattern.Page == TestPatternSurface.JPEG_PAGE)
+            {
+                TestPattern.UpdateEffect();
+            }
         }
-        TestPattern.LuminosityB = (short)SliderB.Value;
         TestPattern.Render();
     }
 
@@ -198,7 +196,7 @@ public sealed partial class MainWindow : Window
         LeftButton.Visibility = TestPattern.Page == 0 ? Visibility.Collapsed : Visibility.Visible;
         RightButton.Visibility = TestPattern.Page == TestPattern.MaxPage ?
             Visibility.Collapsed : Visibility.Visible;
-        if (p == 3)
+        if (p == TestPatternSurface.JPEG_PAGE)
         {
             SliderA.Visibility = Visibility.Collapsed;
             OpenButton.Visibility = Visibility.Visible;

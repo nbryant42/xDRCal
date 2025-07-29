@@ -83,10 +83,9 @@ control.
 ### UltraHDR JPEG viewer (page 4)
 
 This screen displays a sample UltraHDR JPEG (with a gain map) or loads one from disk, and allows to compare the SDR and
-HDR rendition. On this page, the luminosity slider controls the "max gain" parameter to
-[libultrahdr](https://github.com/google/libultrahdr), and can be used to preview the appearance on lower-spec HDR
-monitors, e.g. an image mastered for an HDR600 display can be previewed as it might appear on HDR400. (The brightness
-change can be a bit slow because it's currently implemented by re-decoding the JPEG.)
+HDR rendition. On this page, the luminosity slider controls a crossfade effect between the base SDR and HDR versions the
+image, to preview the appearance on lower-spec HDR monitors, e.g. an image mastered for an HDR600 display can be
+previewed as it might appear on HDR400.
 
 ### "HDR mode"
 
@@ -119,7 +118,7 @@ and HDR surfaces in particular.
 This call was causing the compositor to get stuck in a black-frame state for some reason after surface resize; probably
 a Windows or NVidia bug. Since it was only added on an "explicit is better than implicit" theory, I've removed it.
 (Setting `ColorSpaceType.RgbFullG10NoneP709` on a surface that defaults to scRGB is just belt-and-suspenders.)
-Implications for other projects are unknown, but if you need colorspace translation, consider shaders.
+Implications for other projects are unknown, but if you need colorspace translation, consider a D2D effect.
 - **Don't use [ResizeBuffers](https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers)
 on a visible swap-chain:**  
 This creates resize flicker, at least if you're also centering. DirectComposition helps by batching changes atomically
@@ -129,14 +128,15 @@ but this is not synchronized with
 resized swap-chain, `Present` it, and give that a bit of time to complete before switching the visual to use it and
 calling `Commit`. There are still some unavoidable race conditions in this, but it eliminates most resize flicker.
 (There is no public way to know when `Present` has actually completed and ready to `Commit`, which is the core source
-of unavoidable flicker.)
+of unavoidable flicker at least for classic DComp-based implementations.)
 - **Consider calling `Present` multiple times on resize:**  
-In this app, calling my `Render()` function 3 times (for a 2-buffer swap-chain) reduces resize flicker to almost zero.
-The 3rd `Present` is more likely to block, helping to guarantee the swapchain is ready to pass to `Commit`.
-- **[SwapChainPanel](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.controls.swapchainpanel)
-setup is sequence/timing dependent and prone to race conditions:**    
-Do not call [ISwapChainPanelNative.SetSwapChain](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/win32/microsoft.ui.xaml.media.dxinterop/nf-microsoft-ui-xaml-media-dxinterop-iswapchainpanelnative-setswapchain)
-until your swap-chain is fully presented. (May require multiple Present calls, as discussed above. `SwapChainPanel` is
-committing to a DComp surface under the covers.) It might work fine for SDR surfaces, but HDR surfaces will behave very
-strangely and misleadingly. If you see HDR surfaces that appear to "clamp" to SDR, or find that you need to force things
-with a game-style render loop, this is probably the cause.
+In this app, calling my `Render()` function 3 times (for a 2-buffer swap-chain) was observed to reduce resize flicker to
+almost zero. (In the previous Classic DComp implementation, but this seems less necessary in the `SwapChainPanel`-based
+implementation.) The reason appears to be that the 3rd `Present` is more likely to block, helping to guarantee the
+swap-chain is ready to pass to `Commit`.
+- **Swap-chain setup can be tricky:**  
+In early revisions of this codebase, I observed some bizarre behavior with HDR surfaces that appear to "clamp" to SDR
+after a few milliseconds. I'm not quite sure what the root cause was (possibly ResizeBuffers usage) but it got fixed 
+as a side-effect of other changes. If you run into this, check API usage carefully. The early workaround was to use
+a game-style constant render loop, but if you find yourself doing this you're probably causing driver-level instability.
+If everything is set up correctly, such workarounds should not be necessary.

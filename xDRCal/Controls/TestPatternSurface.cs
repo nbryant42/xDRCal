@@ -17,6 +17,8 @@ namespace xDRCal.Controls;
 
 public partial class TestPatternSurface : Surface
 {
+    public const int JPEG_PAGE = 3;
+
     public TestPatternSurface()
     {
         Pages = [DrawChessboard, DrawGammaRamp, DrawBandingTest, DrawDemoImage];
@@ -44,8 +46,10 @@ public partial class TestPatternSurface : Surface
         _asImage = null;
         _colorEffect?.Dispose();
         _colorEffect = null;
-        _effect?.Dispose();
-        _effect = null;
+        _matrixEffect?.Dispose();
+        _matrixEffect = null;
+        _crossFade?.Dispose();
+        _crossFade = null;
     }
 
     public override void Render()
@@ -301,31 +305,33 @@ public partial class TestPatternSurface : Surface
     }
 
     private ID2D1Image? _asImage;
-    private ID2D1Bitmap1? _bitmap;
-    private ColorMatrix? _effect;
+    private ID2D1Bitmap1? _sdrBitmap;
+    private ID2D1Bitmap1? _hdrBitmap;
+    private float peakHdrScrgb;
+    private ColorMatrix? _matrixEffect;
     private ColorManagement? _colorEffect;
-    private byte[]? bytes;
+    private CrossFade? _crossFade;
 
     public async void LoadImage(StorageFile file)
     {
         try
         {
-            if (_d2dContext == null || _colorEffect == null || _effect == null)
+            if (_d2dContext == null || _colorEffect == null || _matrixEffect == null || _crossFade == null)
             {
                 throw new Exception("missing reference");
             }
 
             var newBytes = await ReadStorageFileToBytesAsync(file);
             using var ctx = _d2dContext.QueryInterface<ID2D1DeviceContext5>();
-            var newBitmap = UpdateBitmap(ctx, out var whiteLevel, newBytes);
+            var (newSdrBitmap, newHdrBitmap, newPeak) = UpdateBitmap(ctx, newBytes);
 
             // if we got this far, loading the JPEG succeeded, so go ahead and update:
             InvalidateBitmap();
-            _bitmap = newBitmap;
-            bytes = newBytes;
+            _sdrBitmap = newSdrBitmap;
+            _hdrBitmap = newHdrBitmap;
+            peakHdrScrgb = newPeak;
 
-            UltraHdrDecoder.UpdateEffect(ctx, _bitmap, _colorEffect, _effect, HdrMode, whiteLevel);
-            Render();
+            UpdateEffect(ctx);
         }
         catch (UltraHdrException ex)
         {
@@ -337,6 +343,35 @@ public partial class TestPatternSurface : Surface
         }
     }
 
+    public void UpdateEffect()
+    {
+        if (_d2dContext == null)
+        {
+            throw new Exception("missing context");
+        }
+        try
+        {
+            using var ctx = _d2dContext.QueryInterface<ID2D1DeviceContext5>();
+            UpdateEffect(ctx);
+        }
+        catch (Exception e)
+        {
+            Debug.WriteLine($"UpdateEffect failed: {e}");
+        }
+    }
+
+    private void UpdateEffect(ID2D1DeviceContext5 ctx)
+    {
+        if (_d2dContext == null || _colorEffect == null || _matrixEffect == null || _crossFade == null ||
+            _sdrBitmap == null || _hdrBitmap == null)
+        {
+            throw new Exception("missing reference");
+        }
+        UltraHdrDecoder.UpdateEffect(ctx, _sdrBitmap, _hdrBitmap, peakHdrScrgb, _crossFade, _colorEffect,
+            _matrixEffect, HdrMode, Hwnd, Eotf.ToScRGB(LuminosityB));
+        Render();
+    }
+
     public async void ShowErrorDialogAsync(string title, string message)
     {
         var dialog = new ContentDialog
@@ -344,7 +379,7 @@ public partial class TestPatternSurface : Surface
             Title = title,
             Content = message,
             CloseButtonText = "OK",
-            XamlRoot = this.XamlRoot // Or pass in XamlRoot from your Page/UserControl
+            XamlRoot = this.XamlRoot
         };
 
         await dialog.ShowAsync();
@@ -352,15 +387,13 @@ public partial class TestPatternSurface : Surface
 
     public static async Task<byte[]> ReadStorageFileToBytesAsync(StorageFile file)
     {
-        // Open the file as a stream
         using var stream = await file.OpenStreamForReadAsync();
         using var memoryStream = new MemoryStream();
         await stream.CopyToAsync(memoryStream);
         return memoryStream.ToArray();
     }
 
-    // dump the demo image bitmap. on the next render, we will re-decode it, possibly with new format and max gain.
-    public override void InvalidateBitmap()
+    private void InvalidateBitmap()
     {
         if (_colorEffect != null)
         {
@@ -370,8 +403,10 @@ public partial class TestPatternSurface : Surface
             _colorEffect.DestinationColorContext?.Dispose();
             _colorEffect.DestinationColorContext = null;
         }
-        _bitmap?.Dispose();
-        _bitmap = null;
+        _sdrBitmap?.Dispose();
+        _sdrBitmap = null;
+        _hdrBitmap?.Dispose();
+        _hdrBitmap = null;
     }
 
     private void DrawDemoImage(int width, int height, float scale)
@@ -381,22 +416,23 @@ public partial class TestPatternSurface : Surface
             throw new InvalidOperationException("missing _d2dContext");
         }
 
-        bytes ??= ReadBytes("xDRCal.Assets.Grand_P3_4k_HDR-9714.jpg");
         using var ctx = _d2dContext.QueryInterface<ID2D1DeviceContext5>();
 
-        if (_asImage == null || _colorEffect == null || _effect == null)
+        if (_asImage == null || _colorEffect == null || _matrixEffect == null || _crossFade == null)
         {
-            _effect = UltraHdrDecoder.CreateEffect(ctx, out _colorEffect);
-            _asImage = _effect.QueryInterface<ID2D1Image>();
+            _matrixEffect = UltraHdrDecoder.CreateEffect(ctx, out _crossFade, out _colorEffect);
+            _asImage = _matrixEffect.QueryInterface<ID2D1Image>();
         }
 
-        if (_bitmap == null)
+        if (_sdrBitmap == null)
         {
-            _bitmap = UpdateBitmap(ctx, out var whiteLevel, bytes);
-            UltraHdrDecoder.UpdateEffect(ctx, _bitmap, _colorEffect, _effect, HdrMode, whiteLevel);
+            var bytes = ReadBytes("xDRCal.Assets.Grand_P3_4k_HDR-9714.jpg");
+            (_sdrBitmap, _hdrBitmap, peakHdrScrgb) = UpdateBitmap(ctx, bytes);
+            UltraHdrDecoder.UpdateEffect(ctx, _sdrBitmap, _hdrBitmap, peakHdrScrgb, _crossFade, _colorEffect,
+                _matrixEffect, HdrMode, Hwnd, Eotf.ToScRGB(LuminosityB));
         }
 
-        var size = _bitmap.PixelSize;
+        var size = _sdrBitmap.PixelSize;
         var aspect = (float)size.Width / size.Height;
         var newW = (float)width;
         var newH = (float)height;
@@ -424,15 +460,43 @@ public partial class TestPatternSurface : Surface
         _d2dContext.Transform = Matrix3x2.Identity;
     }
 
-    private ID2D1Bitmap1 UpdateBitmap(ID2D1DeviceContext5 ctx, out float whiteLevel, byte[] bytes)
+    private static (ID2D1Bitmap1, ID2D1Bitmap1, float) UpdateBitmap(ID2D1DeviceContext5 ctx, byte[] bytes)
     {
-        var dip = Util.FindDeviceInterfacePath(Hwnd);
-        whiteLevel = HdrMode && dip != null ? Util.GetSdrWhiteLevel(dip) : 1.0f;
-        var b = Eotf.ToScRGB(LuminosityB);
-        var maxBoost = HdrMode ? Math.Max(b / whiteLevel, 1.0f) : 1.0f;
-        Debug.WriteLine($"maxBoost = {maxBoost}");
         using var decoder = new UltraHdrDecoder();
-        return decoder.DecodeJpegGainmap(ctx, bytes, HdrMode, maxBoost);
+        var rawSdr = decoder.DecodeJpegGainmap(bytes, true, 1.0f); //float16 scRGB, but limited to [0.0..1.0]
+
+        var colorContext = decoder.CreateColorContext(ctx, ref rawSdr, true);
+        var sdrBitmap = decoder.CreateBitmap(ctx, ref rawSdr, true, colorContext);
+
+        var rawHdr = decoder.DecodeJpegGainmap(bytes, true, 0.0f); // full HDR range as per image creative intent
+        var hdrBitmap = decoder.CreateBitmap(ctx, ref rawHdr, true, colorContext);
+
+        var peakHdrScrgb = CalcMax(rawHdr);
+
+        return (sdrBitmap, hdrBitmap, peakHdrScrgb);
+    }
+
+    public struct Rgba16F
+    {
+        public Half R, G, B, A;
+    }
+
+    private static unsafe float CalcMax(UltraHdrDecoder.uhdr_raw_image_t rawHdr)
+    {
+        Rgba16F* plane = (Rgba16F*)rawHdr.plane0;
+        var stride = rawHdr.stride0;
+        var max = Half.Zero;
+
+        for (int row = 0; row < rawHdr.h; row++)
+        {
+            for (int col = 0; col < rawHdr.w; col++)
+            {
+                var pix = plane[row * stride + col];
+                max = Half.Max(max, Half.Max(pix.R, Half.Max(pix.G, pix.B)));
+            }
+        }
+
+        return (float)max;
     }
 
     private static byte[] ReadBytes(string resourceName)

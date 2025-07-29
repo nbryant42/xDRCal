@@ -33,7 +33,6 @@ public abstract partial class Surface : SwapChainPanel, IDisposable
     protected IDXGISwapChain1? _swapChain;
     protected ID2D1Bitmap1? _d2dTargetBitmap;
 
-    private bool hdrMode;
     protected bool HasAlpha { get; set; }
 
     public Surface()
@@ -67,26 +66,9 @@ public abstract partial class Surface : SwapChainPanel, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    public bool HdrMode
-    {
-        get => hdrMode;
-        set
-        {
-            if (hdrMode != value)
-            {
-                hdrMode = value;
-                InvalidateBitmap();
-#pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
-                // fire-and-forget should be fine here.
-                ResizeRenderTarget();
-#pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
-            }
-        }
-    }
+    public bool HdrMode { get; set; }
 
-    public virtual void InvalidateBitmap() { }
-
-    private async void InitializeDirectX()
+    private void InitializeDirectX()
     {
         try
         {
@@ -102,7 +84,7 @@ public abstract partial class Surface : SwapChainPanel, IDisposable
                 _dwriteFactory = DWrite.DWriteCreateFactory<IDWriteFactory>();
                 _panelNative = GetPanelNative();
             }
-            await ResizeRenderTarget();
+            ResizeRenderTarget();
         }
         catch (Exception ex)
         {
@@ -147,7 +129,7 @@ public abstract partial class Surface : SwapChainPanel, IDisposable
 
     // Currently, only the main test-pattern surface ever needs to be RE-sized, but this method also performs the
     // initial allocation too. Must call this method after construction.
-    public async Task ResizeRenderTarget()
+    public async void ResizeRenderTarget()
     {
         if (_d2dContext == null || _dxgiFactory == null || _panelNative == null ||
             ActualHeight == 0 || ActualWidth == 0)
@@ -228,10 +210,10 @@ public abstract partial class Surface : SwapChainPanel, IDisposable
         // get buffer count (Windows may override our request)
         var count = _swapChain.Description1.BufferCount;
         // if 2 buffers, render 3X; third is more likely to block, helping with .SetSwapChain() sync.
-        for (var i = 0; i <= count; i++)
-        {
+        //for (var i = 0; i <= count; i++)
+        //{
             Render();
-        }
+        //}
 
         _panelNative.SetSwapChain(_swapChain);
 

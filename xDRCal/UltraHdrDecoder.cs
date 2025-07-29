@@ -25,26 +25,61 @@ public partial class UltraHdrDecoder : IDisposable
     }
 
     // Build D2D effect graph to render the image. (Builds the refs, but does not set all values just yet.)
-    public static ColorMatrix CreateEffect(ID2D1DeviceContext5 ctx, out ColorManagement colorEffect)
+    public static ColorMatrix CreateEffect(ID2D1DeviceContext5 ctx, out CrossFade crossFade,
+        out ColorManagement colorEffect)
     {
+        crossFade = new CrossFade(ctx);
         colorEffect = new ColorManagement(ctx)
         {
             Quality = ColormanagementQuality.Best,
         };
+        colorEffect.SetInputEffect(0, crossFade);
 
         var matrixEffect = new ColorMatrix(ctx);
         matrixEffect.SetInputEffect(0, colorEffect);
         return matrixEffect;
     }
 
-    public static void UpdateEffect(ID2D1DeviceContext5 ctx, ID2D1Bitmap1 bitmap, ColorManagement colorEffect,
-        ColorMatrix matrixEffect, bool hdr, float whiteLevel)
+    public static void UpdateEffect(ID2D1DeviceContext5 ctx, ID2D1Bitmap1 sdrBitmap, ID2D1Bitmap1 hdrBitmap,
+        float peakHdrScrgb, CrossFade crossFade, ColorManagement colorEffect, ColorMatrix matrixEffect, bool hdr,
+        IntPtr hwnd, float targetPeakScrgb)
     {
+        var dip = Util.FindDeviceInterfacePath(hwnd);
+        float whiteLevel;
+
+        crossFade.SetInput(0, hdrBitmap, true);
+        crossFade.SetInput(1, sdrBitmap, true);
+
+        if (hdr)
+        {
+            // whiteLevel is the desktop brightness multiplier, minimum 1.0f
+            whiteLevel = dip != null ? Util.GetSdrWhiteLevel(dip) : 1.0f;
+
+            if (peakHdrScrgb <= 1.0f)
+            {
+                // the "HDR" version is not actually brighter than SDR?!?
+                // unlikely, but must not divide by zero. Use the HDR version.
+                crossFade.Weight = 1.0f;
+            }
+            else
+            {
+                // headroom (in f-stops) is [1.0..peakHdrScrgb]
+                var headroom = Math.Max(1.0f, Math.Min(peakHdrScrgb, targetPeakScrgb / whiteLevel));
+                // crossFade.Weight is [0.0..1.0]; scale linearly with headroom
+                crossFade.Weight = (headroom - 1.0f) / (peakHdrScrgb - 1.0f);
+            }
+        }
+        else
+        {
+            whiteLevel = 1.0f;
+            crossFade.Weight = 0.0f;
+        }
+
         // TODO deal with legacy ICC profiles for non-sRGB SDR.
         colorEffect.DestinationColorContext = ctx.CreateColorContextFromDxgiColorSpace(
             hdr ? ColorSpaceType.RgbFullG10NoneP709 : ColorSpaceType.RgbFullG22NoneP709);
-        colorEffect.SourceColorContext = bitmap.ColorContext;
-        colorEffect.SetInput(0, bitmap, true);
+        colorEffect.SourceColorContext = hdrBitmap.ColorContext;
+        colorEffect.SetInputEffect(0, crossFade, true);
 
         // SDR white level scaling is performing by multiplying RGB color values in linear gamma.
         // We implement this with a Direct2D matrix effect.
@@ -58,9 +93,9 @@ public partial class UltraHdrDecoder : IDisposable
         matrixEffect.SetValue(0, matrix);
     }
 
-    private static ID2D1Bitmap1 CreateBitmap(ID2D1DeviceContext5 ctx, ref uhdr_raw_image_t image, bool hdr)
+    // not static; we are requiring the instance still exist so that decoder-owned memory won't be freed yet.
+    public ID2D1Bitmap1 CreateBitmap(ID2D1DeviceContext5 ctx, ref uhdr_raw_image_t image, bool hdr, ID2D1ColorContext1 sourceColorContext)
     {
-        var sourceColorContext = CreateColorContext(ctx, image, hdr);
         var size = new SizeI((int)image.w, (int)image.h);
 
         var fmt = new PixelFormat(hdr ? Format.R16G16B16A16_Float : Format.R8G8B8A8_UNorm,
@@ -77,7 +112,9 @@ public partial class UltraHdrDecoder : IDisposable
         return ctx.CreateBitmap(size, image.plane0, image.stride0 * pixBytes, props);
     }
 
-    private static ID2D1ColorContext1 CreateColorContext(ID2D1DeviceContext5 ctx, uhdr_raw_image_t image, bool hdr)
+    // not static; we are requiring the instance still exist so that decoder-owned memory won't be freed yet.
+    public ID2D1ColorContext1 CreateColorContext(ID2D1DeviceContext5 ctx, ref uhdr_raw_image_t image,
+        bool hdr)
     {
         switch (image.cg)
         {
@@ -118,8 +155,7 @@ public partial class UltraHdrDecoder : IDisposable
         }
     }
 
-    public unsafe ID2D1Bitmap1 DecodeJpegGainmap(ID2D1DeviceContext5 ctx, byte[] jpegBytes, bool hdr,
-        float maxDisplayBoost = 0.0f)
+    public unsafe uhdr_raw_image_t DecodeJpegGainmap(byte[] jpegBytes, bool hdr, float maxDisplayBoost)
     {
         uhdr_reset_decoder(_decoder);
 
@@ -170,7 +206,7 @@ public partial class UltraHdrDecoder : IDisposable
             if (rawImage == null)
                 throw new UltraHdrException("uhdr_get_decoded_image", null);
 
-            return CreateBitmap(ctx, ref *rawImage, hdr);
+            return *rawImage;
         }
     }
 
@@ -250,7 +286,7 @@ public partial class UltraHdrDecoder : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct uhdr_raw_image_t
+    public struct uhdr_raw_image_t
     {
         internal uhdr_img_fmt_t fmt;
         internal uhdr_color_gamut_t cg;
