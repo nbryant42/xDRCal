@@ -134,9 +134,8 @@ In this app, calling my `Render()` function 3 times (for a 2-buffer swap-chain) 
 almost zero. (In the previous Classic DComp implementation, but this seems less necessary in the `SwapChainPanel`-based
 implementation.) The reason appears to be that the 3rd `Present` is more likely to block, helping to guarantee the
 swap-chain is ready to pass to `Commit`.
-- **Swap-chain setup can be tricky:**  
-In early revisions of this codebase, I observed some bizarre behavior with HDR surfaces that appear to "clamp" to SDR
-after a few milliseconds. I'm not quite sure what the root cause was (possibly ResizeBuffers usage) but it got fixed 
-as a side-effect of other changes. If you run into this, check API usage carefully. The early workaround was to use
-a game-style constant render loop, but if you find yourself doing this you're probably causing driver-level instability.
-If everything is set up correctly, such workarounds should not be necessary.
+- **Don't use ResizeBuffers to change between HDR and SDR mode:**  
+This will cause system-level instability. Instead, build a new swap-chain. What appears to happen is the compositor
+decides the SDR/HDR status when the swap-chain first becomes visible, and will clamp output to SDR if it changes later.
+This can be forcefully overridden with a game-style refresh loop, but this is not the the correct fix; it will lead to
+graphical glitches and Z-Order conflicts.
